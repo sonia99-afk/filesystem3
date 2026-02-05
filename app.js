@@ -1,0 +1,955 @@
+const LEVEL = { COMPANY: 0, PROJECT: 1, DEPT: 2, ROLE: 3 };
+const DEFAULT_NAME = { 0: 'Компания', 1: 'Проект', 2: 'Отдел', 3: 'Должность' };
+
+const uid = () => Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36);
+
+function makeNode(level, name) {
+  return { id: uid(), level, name: (name || DEFAULT_NAME[level]), children: [] };
+}
+
+const root = makeNode(LEVEL.COMPANY, 'Компания');
+let selectedId = root.id;
+let treeHasFocus = true;
+let renamingId = null;
+
+/* =========================
+   Undo / Redo (Cmd+X = undo, Cmd+Z = redo)
+   ========================= */
+let undoStack = [];
+let redoStack = [];
+
+function snapshot() {
+  return JSON.stringify({
+    root,
+    selectedId,
+    treeHasFocus
+  });
+}
+
+function restore(state) {
+  const data = JSON.parse(state);
+
+  // restore root in-place (keep reference)
+  root.id = data.root.id;
+  root.level = data.root.level;
+  root.name = data.root.name;
+  root.children = data.root.children || [];
+
+  selectedId = data.selectedId || root.id;
+  treeHasFocus = (typeof data.treeHasFocus === 'boolean') ? data.treeHasFocus : true;
+
+  // if selectedId no longer exists -> fallback to root
+  if (!findWithParent(root, selectedId)) selectedId = root.id;
+
+  renamingId = null;
+  render();
+}
+
+function pushHistory() {
+  undoStack.push(snapshot());
+  redoStack.length = 0;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  const prev = undoStack.pop();
+  restore(prev);
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  const next = redoStack.pop();
+  restore(next);
+}
+
+// layout-independent hotkeys (works on RU layout too)
+function isMod(e) { return (e.metaKey || e.ctrlKey) && !e.altKey; }
+
+function isUndoHotkey(e) {
+  return isMod(e) && !e.shiftKey && (e.code === 'KeyX' || String(e.key).toLowerCase() === 'x');
+}
+
+function isRedoHotkey(e) {
+  return isMod(e) && !e.shiftKey && (e.code === 'KeyZ' || String(e.key).toLowerCase() === 'z');
+}
+
+/* ========================= */
+
+function esc(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function cssEscape(s) {
+  const v = String(s);
+  if (window.CSS && typeof CSS.escape === 'function') return CSS.escape(v);
+  return v.replace(/[^a-zA-Z0-9_\-]/g, '\\$&');
+}
+
+function findWithParent(node, id, parent = null) {
+  if (node.id === id) return { node, parent };
+  for (const ch of node.children) {
+    const r = findWithParent(ch, id, node);
+    if (r) return r;
+  }
+  return null;
+}
+
+function canHaveChild(node) {
+  return node.level < LEVEL.ROLE;
+}
+
+function flatten() {
+  const out = [];
+  (function walk(n) {
+    out.push(n.id);
+    for (const ch of n.children) walk(ch);
+  })(root);
+  return out;
+}
+
+function flattenWithLevels() {
+  const out = [];
+  (function walk(n) {
+    out.push({ id: n.id, level: n.level });
+    for (const ch of n.children) walk(ch);
+  })(root);
+  return out;
+}
+
+function parentOf(id) {
+  const r = findWithParent(root, id);
+  return r && r.parent ? r.parent.id : null;
+}
+
+function firstChildOf(id) {
+  const r = findWithParent(root, id);
+  if (!r) return null;
+  return (r.node.children && r.node.children.length) ? r.node.children[0].id : null;
+}
+
+function firstDeeperAfter(id) {
+  const flat = flattenWithLevels();
+  const idx = flat.findIndex(x => x.id === id);
+  if (idx < 0) return null;
+  const baseLevel = flat[idx].level;
+  for (let i = idx + 1; i < flat.length; i++) {
+    if (flat[i].level > baseLevel) return flat[i].id;
+  }
+  return null;
+}
+
+/* ======== Tree mutations (with history) ======== */
+
+function addChild(parentId) {
+  const r = findWithParent(root, parentId);
+  if (!r) return;
+  if (!canHaveChild(r.node)) return;
+
+  pushHistory();
+
+  const child = makeNode(r.node.level + 1);
+  r.node.children.push(child);
+  selectedId = child.id;
+  treeHasFocus = true;
+  render();
+}
+
+function addSibling(targetId) {
+  if (targetId === root.id) {
+    addChild(root.id);
+    return;
+  }
+
+  const r = findWithParent(root, targetId);
+  if (!r || !r.parent) return;
+
+  pushHistory();
+
+  const parent = r.parent;
+  const idx = parent.children.findIndex(x => x.id === targetId);
+  const sib = makeNode(r.node.level);
+
+  const insertAt = (idx >= 0) ? idx + 1 : parent.children.length;
+  parent.children.splice(insertAt, 0, sib);
+  selectedId = sib.id;
+  treeHasFocus = true;
+  render();
+}
+
+function removeSelected() {
+  if (!selectedId) return;
+  if (selectedId === root.id) return;
+
+  const r = findWithParent(root, selectedId);
+  if (!r || !r.parent) return;
+
+  pushHistory();
+
+  r.parent.children = r.parent.children.filter(x => x.id !== selectedId);
+  selectedId = r.parent.id;
+  treeHasFocus = true;
+  render();
+}
+
+function moveWithinParent(dir) {
+  if (!selectedId) return;
+  if (selectedId === root.id) return;
+
+  const r = findWithParent(root, selectedId);
+  if (!r || !r.parent) return;
+
+  const arr = r.parent.children;
+  const idx = arr.findIndex(x => x.id === selectedId);
+  if (idx < 0) return;
+
+  const j = idx + dir;
+  if (j < 0 || j >= arr.length) return;
+
+  pushHistory();
+
+  const tmp = arr[idx];
+  arr[idx] = arr[j];
+  arr[j] = tmp;
+
+  render();
+}
+
+// Shift+Right: indent (make child of previous sibling)
+// Shift+Left: outdent (move after parent)
+function indentNode(id) {
+  if (!id || id === root.id) return;
+
+  const r = findWithParent(root, id);
+  if (!r || !r.parent) return;
+
+  const siblings = r.parent.children;
+  const idx = siblings.findIndex(x => x.id === id);
+  if (idx <= 0) return;
+
+  const newParent = siblings[idx - 1];
+  if (!canHaveChild(newParent)) return;
+
+  pushHistory();
+
+  // при indent узел становится на уровень глубже
+  if (!shiftSubtreeLevel(r.node, +1)) return;
+
+  siblings.splice(idx, 1);
+  newParent.children.push(r.node);
+
+  selectedId = id;
+  treeHasFocus = true;
+  render();
+}
+
+function outdentNode(id) {
+  if (!id || id === root.id) return;
+
+  const r = findWithParent(root, id);
+  if (!r || !r.parent) return;
+
+  const parent = r.parent;
+  const gp = findWithParent(root, parent.id)?.parent;
+  if (!gp) return;
+
+  pushHistory();
+
+  // при outdent узел поднимается на уровень выше
+  if (!shiftSubtreeLevel(r.node, -1)) return;
+
+  parent.children = parent.children.filter(x => x.id !== id);
+
+  const pIdx = gp.children.findIndex(x => x.id === parent.id);
+  gp.children.splice(pIdx + 1, 0, r.node);
+
+  selectedId = id;
+  treeHasFocus = true;
+  render();
+}
+
+
+function shiftSubtreeLevel(node, delta) {
+  const oldLevel = node.level;
+  const newLevel = oldLevel + delta;
+
+  // защита: уровни не должны выходить за пределы
+  if (newLevel < LEVEL.COMPANY || newLevel > LEVEL.ROLE) return false;
+
+  // если имя было дефолтным для старого уровня — заменяем на дефолт нового
+  if ((node.name || '').trim() === DEFAULT_NAME[oldLevel]) {
+    node.name = DEFAULT_NAME[newLevel];
+  }
+
+  node.level = newLevel;
+
+  for (const ch of (node.children || [])) {
+    const ok = shiftSubtreeLevel(ch, delta);
+    if (!ok) return false;
+  }
+  return true;
+}
+
+
+/* ======== Navigation ======== */
+
+function moveSelection(dir) {
+  const flat = flatten();
+  const idx = flat.indexOf(selectedId);
+  if (idx < 0) return;
+  const next = flat[idx + dir];
+  if (!next) return;
+  selectedId = next;
+  treeHasFocus = true;
+  render();
+}
+
+function goParent(fromId) {
+  const p = parentOf(fromId);
+  if (!p) return;
+  selectedId = p;
+  treeHasFocus = true;
+  render();
+}
+
+function goDeeper(fromId) {
+  const direct = firstChildOf(fromId);
+  if (direct) {
+    selectedId = direct;
+    treeHasFocus = true;
+    render();
+    return;
+  }
+  const deeper = firstDeeperAfter(fromId);
+  if (!deeper) return;
+  selectedId = deeper;
+  treeHasFocus = true;
+  render();
+}
+
+/* ======== Rename ======== */
+
+function startRename(id) {
+  if (!id) return;
+  const r = findWithParent(root, id);
+  if (!r) return;
+
+  renamingId = id;
+
+  const host = document.getElementById('tree');
+  const row = host.querySelector(`.row[data-id="${cssEscape(id)}"]`);
+  if (!row) return;
+
+  const cur = r.node.name || '';
+  row.innerHTML = '';
+
+  const input = document.createElement('input');
+  input.className = 'edit';
+  input.type = 'text';
+  input.value = cur;
+  // чтобы клик/drag по input не триггерил .row.click и не делал render()
+  const stopMouse = (e) => e.stopPropagation();
+
+// важно: pointerdown покрывает мышь+тач, mousedown — на всякий случай
+input.addEventListener('pointerdown', stopMouse);
+input.addEventListener('pointerup', stopMouse);
+input.addEventListener('mousedown', stopMouse);
+input.addEventListener('mouseup', stopMouse);
+input.addEventListener('click', stopMouse);
+input.addEventListener('dblclick', stopMouse);
+  input.style.width = Math.max(120, Math.min(520, (cur.length + 4) * 9)) + 'px';
+
+  function commit() {
+    const t = input.value.trim();
+    if (t && t !== r.node.name) {
+      pushHistory();
+      r.node.name = t;
+    }
+    renamingId = null;
+    render();
+  }
+
+  function cancel() {
+    renamingId = null;
+    render();
+  }
+
+  input.addEventListener('keydown', (e) => {
+    // undo/redo must work even during editing
+    if (isUndoHotkey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      undo();
+      return;
+    }
+    if (isRedoHotkey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      redo();
+      return;
+    }
+
+    // Enter — save name (and don't create a new node)
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      commit();
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cancel();
+      return;
+    }
+
+    // prevent tree navigation/indent on arrows while editing
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.stopPropagation(); // browser handles caret / Shift+selection
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.stopPropagation();
+
+      // For single-line input: Shift+Up/Down = select to start/end
+      if (e.shiftKey) {
+        e.preventDefault();
+        const len = input.value.length;
+        const a = input.selectionStart ?? 0;
+        const b = input.selectionEnd ?? 0;
+
+        // anchor of selection
+        const anchor = (input._selAnchor ?? (b > a ? a : a));
+        input._selAnchor = anchor;
+
+        if (e.key === 'ArrowUp') {
+          input.setSelectionRange(0, anchor);
+        } else {
+          input.setSelectionRange(anchor, len);
+        }
+      } else {
+        input._selAnchor = null;
+      }
+      return;
+    }
+
+    // allow Delete/Backspace inside input but block tree deletion
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.stopPropagation();
+      return;
+    }
+  });
+
+  input.addEventListener('blur', () => { commit(); });
+
+  row.appendChild(input);
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
+/* ======== Render ======== */
+
+function focusSelectedRow() {
+  if (!treeHasFocus) return;
+  const host = document.getElementById('tree');
+  const r = host.querySelector(`.row[data-id="${cssEscape(selectedId)}"]`);
+  if (!r) return;
+  r.focus({ preventScroll: true });
+}
+
+function render() {
+  const host = document.getElementById('tree');
+  host.innerHTML = '';
+
+  const ul = document.createElement('ul');
+  ul.dataset.level = String(root.level);
+  ul.appendChild(renderNode(root));
+  host.appendChild(ul);
+
+  layoutTrunks();
+
+  if (treeHasFocus) focusSelectedRow();
+
+  if (renamingId) {
+    const id = renamingId;
+    renamingId = null;
+    startRename(id);
+  }
+}
+
+function makeBtn(midText, onClick) {
+  const b = document.createElement('span');
+  b.className = 'btn';
+
+  const l = document.createElement('span');
+  l.className = 'br';
+  l.textContent = '[';
+
+  const m = document.createElement('span');
+  m.className = 'mid';
+  m.textContent = midText;
+
+  const r = document.createElement('span');
+  r.className = 'br';
+  r.textContent = ']';
+
+  b.append(l, m, r);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderNode(n) {
+  const li = document.createElement('li');
+  if (n.id === root.id) li.classList.add('root');
+
+  const anchor = document.createElement('span');
+  anchor.className = 'anchor';
+  li.appendChild(anchor);
+
+  const row = document.createElement('span');
+  row.dataset.id = n.id;
+  row.className = 'row' + ((treeHasFocus && n.id === selectedId) ? ' sel' : '');
+  row.tabIndex = 0;
+  row.innerHTML = esc(n.name);
+
+  const act = document.createElement('span');
+  act.className = 'act';
+
+  {
+    const plus = makeBtn('+', (e) => { e.stopPropagation(); selectedId = n.id; addSibling(n.id); });
+    act.appendChild(plus);
+  }
+
+  {
+    const rename = makeBtn('..', (e) => {
+      e.stopPropagation();
+      selectedId = n.id;
+      treeHasFocus = true;
+      render();
+      startRename(n.id);
+    });
+    act.appendChild(rename);
+  }
+
+  if (canHaveChild(n)) {
+    const child = makeBtn('>', (e) => { e.stopPropagation(); selectedId = n.id; addChild(n.id); });
+    act.appendChild(child);
+  }
+
+  if (n.id !== root.id) {
+    const del = makeBtn('x', (e) => { e.stopPropagation(); selectedId = n.id; removeSelected(); });
+    act.appendChild(del);
+  } else {
+    const lock = document.createElement('span');
+    lock.className = 'mut';
+    lock.textContent = ' (корень)';
+    lock.style.marginLeft = '6px';
+    act.appendChild(lock);
+  }
+
+  row.appendChild(act);
+
+  row.addEventListener('click', () => {
+    selectedId = n.id;
+    treeHasFocus = true;
+    render();
+  });
+
+  // double click -> rename
+  row.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.act')) return; // not on buttons
+    e.preventDefault();
+    e.stopPropagation();
+    selectedId = n.id;
+    treeHasFocus = true;
+    render();
+    startRename(n.id);
+  });
+
+  row.addEventListener('keydown', (e) => {
+    // undo/redo
+    if (isUndoHotkey(e)) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    if (isRedoHotkey(e)) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+
+    // Shift+Right/Left -> indent/outdent
+    if (e.shiftKey && e.key === 'ArrowRight') {
+      e.preventDefault();
+      selectedId = n.id;
+      indentNode(n.id);
+      return;
+    }
+    if (e.shiftKey && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      selectedId = n.id;
+      outdentNode(n.id);
+      return;
+    }
+
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      goParent(n.id);
+      return;
+    }
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      goDeeper(n.id);
+      return;
+    }
+
+    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      selectedId = n.id;
+      moveWithinParent(e.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedId = n.id;
+      moveSelection(e.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+
+    // Enter — переименовать
+if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+  e.preventDefault();
+  selectedId = n.id;
+  treeHasFocus = true;
+  render();
+  startRename(n.id);
+  return;
+}
+
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      selectedId = n.id;
+      addChild(n.id);
+      return;
+    }
+
+    if (e.key === '+') {
+      e.preventDefault();
+      selectedId = n.id;
+      addSibling(n.id);
+      return;
+    }
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      selectedId = n.id;
+      removeSelected();
+      return;
+    }
+  });
+
+  li.appendChild(row);
+
+  if (n.children && n.children.length) {
+    const ul = document.createElement('ul');
+    ul.dataset.level = String(n.level + 1);
+    for (const ch of n.children) ul.appendChild(renderNode(ch));
+    li.appendChild(ul);
+  }
+
+  return li;
+}
+
+/* ======== layout lines ======== */
+
+function layoutTrunks() {
+  const uls = document.querySelectorAll('ul[data-level]');
+  for (const ul of uls) {
+    ul.querySelectorAll(':scope > .trunk').forEach(el => el.remove());
+    const lvl = ul.dataset.level;
+    if (lvl === '0') continue;
+
+    const items = Array.from(ul.children).filter(el => el.tagName === 'LI');
+    if (items.length === 0) continue;
+
+    const first = items[0].querySelector(':scope > .anchor');
+    const last = items[items.length - 1].querySelector(':scope > .anchor');
+    if (!first || !last) continue;
+
+    const ulBox = ul.getBoundingClientRect();
+    const fBox = first.getBoundingClientRect();
+    const lBox = last.getBoundingClientRect();
+
+    const top = (fBox.top - ulBox.top);
+    const height = (lBox.top - ulBox.top) - top;
+
+    const trunk = document.createElement('div');
+    trunk.className = 'trunk';
+    trunk.style.top = top + 'px';
+    trunk.style.height = Math.max(0, height) + 'px';
+    ul.prepend(trunk);
+  }
+
+  document.querySelectorAll('.plink').forEach(el => el.remove());
+
+  const lis = document.querySelectorAll('li');
+  for (const li of lis) {
+    const childUl = li.querySelector(':scope > ul[data-level]');
+    if (!childUl) continue;
+
+    const parentAnchor = li.querySelector(':scope > .anchor');
+    if (!parentAnchor) continue;
+
+    const items = Array.from(childUl.children).filter(el => el.tagName === 'LI');
+    if (items.length === 0) continue;
+
+    const firstChildAnchor = items[0].querySelector(':scope > .anchor');
+    if (!firstChildAnchor) continue;
+
+    const liBox = li.getBoundingClientRect();
+    const pBox = parentAnchor.getBoundingClientRect();
+    const cBox = firstChildAnchor.getBoundingClientRect();
+    const ulBox = childUl.getBoundingClientRect();
+
+    const cs = getComputedStyle(childUl);
+    const trunkX = parseFloat(cs.getPropertyValue('--trunk-x')) || 0;
+    const shift = parseFloat(cs.getPropertyValue('--trunk-shift')) || 0;
+    const x = (ulBox.left - liBox.left) + trunkX + shift;
+
+    const y1 = (pBox.top - liBox.top);
+    const y2 = (cBox.top - liBox.top);
+
+    const plink = document.createElement('div');
+    plink.className = 'plink';
+    plink.style.left = x + 'px';
+
+    if (y2 >= y1) {
+      plink.style.top = (y1 + 12) + 'px';
+      plink.style.height = Math.max(0, y2 - y1 - 12) + 'px';
+    } else {
+      plink.style.top = (y2 + 12) + 'px';
+      plink.style.height = Math.max(0, y1 - y2 - 12) + 'px';
+    }
+
+    li.prepend(plink);
+  }
+}
+
+/* ======== focus / global hotkeys ======== */
+
+document.getElementById('tree').addEventListener('click', (e) => {
+  if (e.target.closest('.row')) return;
+  treeHasFocus = false;
+  const ae = document.activeElement;
+  if (ae && ae.classList && ae.classList.contains('row')) ae.blur();
+  render();
+});
+
+window.addEventListener('keydown', (e) => {
+  const active = document.activeElement;
+  const isRow = active && active.classList && active.classList.contains('row');
+  const isEditing = active && active.tagName === 'INPUT' && active.classList && active.classList.contains('edit');
+
+  // If focus is on row or input — their handlers handle hotkeys (incl. undo/redo)
+  if (isRow || isEditing) return;
+
+  if (!treeHasFocus) return;
+  if (!selectedId) return;
+
+  // undo/redo
+  if (isUndoHotkey(e)) {
+    e.preventDefault();
+    undo();
+    return;
+  }
+  if (isRedoHotkey(e)) {
+    e.preventDefault();
+    redo();
+    return;
+  }
+
+  // indent/outdent
+  if (e.shiftKey && e.key === 'ArrowRight') {
+    e.preventDefault();
+    indentNode(selectedId);
+    return;
+  }
+  if (e.shiftKey && e.key === 'ArrowLeft') {
+    e.preventDefault();
+    outdentNode(selectedId);
+    return;
+  }
+
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    goParent(selectedId);
+    return;
+  }
+
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    goDeeper(selectedId);
+    return;
+  }
+
+  if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    moveWithinParent(e.key === 'ArrowUp' ? -1 : 1);
+    return;
+  }
+
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    moveSelection(e.key === 'ArrowUp' ? -1 : 1);
+    return;
+  }
+
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    render();
+    startRename(selectedId);
+    return;
+  }
+
+  if (e.key === 'Enter' && e.shiftKey) {
+    e.preventDefault();
+    addChild(selectedId);
+    return;
+  }
+
+  if (e.key === '+') {
+    e.preventDefault();
+    addSibling(selectedId);
+    return;
+  }
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    removeSelected();
+    return;
+  }
+});
+
+/* ======== tests ======== */
+
+function assert(cond, msg) {
+  if (!cond) throw new Error('TEST FAIL: ' + msg);
+}
+
+function runTests() {
+  const tRoot = makeNode(LEVEL.COMPANY, 'Компания');
+
+  function tFind(id) { return findWithParent(tRoot, id); }
+
+  function tAddChild(pid) {
+    const r = tFind(pid);
+    if (!r) return null;
+    if (!canHaveChild(r.node)) return null;
+    const child = makeNode(r.node.level + 1);
+    r.node.children.push(child);
+    return child.id;
+  }
+
+  function tAddSibling(tid) {
+    if (tid === tRoot.id) return tAddChild(tRoot.id);
+    const r = tFind(tid);
+    if (!r || !r.parent) return null;
+    const idx = r.parent.children.findIndex(x => x.id === tid);
+    const sib = makeNode(r.node.level);
+    r.parent.children.splice(idx + 1, 0, sib);
+    return sib.id;
+  }
+
+  function tFlattenWL() {
+    const out = [];
+    (function walk(n) {
+      out.push({ id: n.id, level: n.level });
+      for (const ch of n.children) walk(ch);
+    })(tRoot);
+    return out;
+  }
+
+  function tFirstDeeperAfter(id) {
+    const flat = tFlattenWL();
+    const idx = flat.findIndex(x => x.id === id);
+    if (idx < 0) return null;
+    const base = flat[idx].level;
+    for (let i = idx + 1; i < flat.length; i++) {
+      if (flat[i].level > base) return flat[i].id;
+    }
+    return null;
+  }
+
+  assert(tRoot.level === LEVEL.COMPANY, 'root is company');
+
+  const p1 = tAddSibling(tRoot.id);
+  assert(!!p1, 'project added under root');
+
+  const p2 = tAddSibling(p1);
+  assert(!!p2, 'project sibling added');
+
+  const d1 = tAddChild(p1);
+  assert(!!d1, 'dept child added');
+
+  const r1 = tAddChild(d1);
+  assert(!!r1, 'role child added');
+
+  const before = findWithParent(tRoot, r1).node.children.length;
+  const nope = tAddChild(r1);
+  assert(nope === null, 'no children under role');
+  assert(findWithParent(tRoot, r1).node.children.length === before, 'role still leaf');
+
+  const tRoot2 = makeNode(LEVEL.COMPANY, 'Компания');
+  const pA = makeNode(LEVEL.PROJECT, 'P1');
+  const pB = makeNode(LEVEL.PROJECT, 'P2');
+  const dB = makeNode(LEVEL.DEPT, 'D2');
+  pB.children.push(dB);
+  tRoot2.children.push(pA, pB);
+
+  function tFlattenWL2() {
+    const out = [];
+    (function walk(n) {
+      out.push({ id: n.id, level: n.level });
+      for (const ch of n.children) walk(ch);
+    })(tRoot2);
+    return out;
+  }
+
+  function tFirstDeeperAfter2(id) {
+    const flat = tFlattenWL2();
+    const idx = flat.findIndex(x => x.id === id);
+    if (idx < 0) return null;
+    const base = flat[idx].level;
+    for (let i = idx + 1; i < flat.length; i++) {
+      if (flat[i].level > base) return flat[i].id;
+    }
+    return null;
+  }
+
+  assert(tFirstDeeperAfter2(pA.id) === dB.id, 'arrow right deeper navigation skips to next subtree');
+  assert(tFirstDeeperAfter(pA.id) === null, 'firstDeeperAfter is tree-specific');
+
+  console.log('All tests passed');
+}
+
+render();
+
+if (new URLSearchParams(location.search).get('test') === '1') {
+  runTests();
+}
+
+
+
+
+

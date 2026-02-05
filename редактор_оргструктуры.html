@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Оргструктура — дерево (минимум)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="hint">Клик — выделить • ↑/↓ — навигация • ← — к родителю • → — глубже • Enter — переименовать (только когда есть фокус) • + — добавить «рядом» • Shift+Enter — добавить вложенное • Shift+↑/↓ — переместить среди соседей • Del/Backspace — удалить (кроме компании) • [..] — переименовать • [+] — добавить «рядом» • [>] — добавить вложенное</div>
+    <div id="tree"></div>
+  </div>
+
+  <button onclick="toggleTelegramMode()">Режим Telegram</button>
+
+  <script src="app.js"></script>
+  <script src="multi_select_patch.js"></script>
+  <script src="tg_export_mode.js"></script>
+</body>
+</html>
