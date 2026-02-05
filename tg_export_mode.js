@@ -97,6 +97,10 @@
       };
 
       if (node.level === 0) {
+        // ✅ Разрешаем только ОДИН root (первую строку без '-')
+        // Всё остальное без '-' считаем мусором и игнорируем при сохранении.
+        if (newRoot) continue;
+      
         newRoot = node;
         stack.length = 0;
         stack.push(node);
@@ -128,10 +132,10 @@
     bar.className = 'tgbar';
 
     const backBtn = document.createElement('button');
-    backBtn.textContent = 'Обычный режим';
+    backBtn.textContent = 'Сохранить';
 
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Копировать для Telegram';
+    copyBtn.textContent = 'Копировать';
 
     const ta = document.createElement('textarea');
     ta.className = 'tg-export';
@@ -174,6 +178,7 @@
       }
 
       tgMode = false;
+      updateToggleBtn();
       window.render();
     };
 
@@ -196,12 +201,21 @@
       }
     }
 
+    updateToggleBtn();
+
     patchedRender.__tgPatched = true;
     window.render = patchedRender;
   }
 
+  function updateToggleBtn() {
+    const b = document.getElementById('tgToggle');
+    if (!b) return;
+    b.textContent = tgMode ? 'Отменить' : 'Режим Telegram';
+  }
+
   window.toggleTelegramMode = function () {
     tgMode = !tgMode;
+    updateToggleBtn();
     window.render();
   };
 
