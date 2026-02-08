@@ -210,18 +210,32 @@
   window.addEventListener(
     "keydown",
     (e) => {
-      // Shift + Cmd (meta) + ArrowUp/ArrowDown
-      if (!(e.shiftKey && isCmdLike(e))) return;
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (window.hotkeysMode === "custom") return;
       if (isEditingNow()) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      handleRangeKey(e.key === "ArrowUp" ? -1 : 1);
+  
+      if (typeof isHotkey !== "function") return;
+  
+      if (isHotkey(e, "rangeUp")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        handleRangeKey(-1);
+        return;
+      }
+  
+      if (isHotkey(e, "rangeDown")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        handleRangeKey(+1);
+        return;
+      }
+  
+      // иначе — не трогаем событие
     },
     true
   );
+  
 
   // ---- mouse: Shift+Cmd+Click ----
   function installClickHandler() {

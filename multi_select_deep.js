@@ -19,10 +19,10 @@
       const st = document.createElement("style");
       st.id = id;
       st.textContent = `
-        .row.multi{
-          background:#bfe3ff !important;
-          border-radius:2px;
-        }
+  .row[data-multi-owner="deep"].multi{
+    background:#bfe3ff !important;
+    border-radius:2px;
+  }
       `;
       document.head.appendChild(st);
     })();
@@ -123,12 +123,23 @@
     function applyClasses() {
       const h = host();
       if (!h) return;
-      h.querySelectorAll(".row.multi").forEach((el) => el.classList.remove("multi"));
+    
+      // снимаем multi ТОЛЬКО с тех, что deep сам пометил
+      h.querySelectorAll('.row[data-multi-owner="deep"]').forEach((el) => {
+        el.classList.remove("multi");
+        el.removeAttribute("data-multi-owner");
+      });
+    
+      // ставим deep-подсветку
       for (const id of state.ids) {
         const r = rowById(id);
-        if (r) r.classList.add("multi");
+        if (r) {
+          r.classList.add("multi");
+          r.setAttribute("data-multi-owner", "deep");
+        }
       }
     }
+    
   
     function clickRow(row) {
       if (!row) return;
@@ -190,19 +201,33 @@
     window.addEventListener(
       "keydown",
       (e) => {
+        if (window.hotkeysMode === "custom") return;
         if (isEditingNow()) return;
-  
-        // Shift + Alt + ArrowUp/Down
-        if (!(e.shiftKey && e.altKey)) return;
-        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-  
-        e.preventDefault();
-        e.stopPropagation();
-  
-        handleDeepRangeKey(e.key === "ArrowUp" ? -1 : +1);
+    
+        // ВАЖНО: реагируем ТОЛЬКО если совпал хоткей
+        if (typeof isHotkey !== "function") return;
+    
+        if (isHotkey(e, "deepUp")) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          handleDeepRangeKey(-1);
+          return;
+        }
+    
+        if (isHotkey(e, "deepDown")) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          handleDeepRangeKey(+1);
+          return;
+        }
+    
+        // иначе — не трогаем событие вообще
       },
       true
     );
+    
   
     // ---- Shift+Alt+Click: toggle within one block ----
     function installClickHandler() {
@@ -229,6 +254,7 @@
   
           // обычный клик без Shift+Alt — сброс "deep" выделения
           if (!(e.shiftKey && e.altKey)) {
+            // сбрасываем deep-состояние, но чистим только deep-подсветку (через applyClasses, которая теперь безопасна)
             reset();
             applyClasses();
             return;

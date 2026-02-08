@@ -1,157 +1,136 @@
 // multi_ops.js
-// Массовое удаление выделенных multi (голубых).
-// Горячие клавиши: Delete / Backspace
-// Работает на macOS и Windows.
+// Массовые операции над мультивыделением (.row.multi):
+// - Delete: удалить все выделенные синим элементы одним действием (1 шаг Undo)
 //
-// Требования:
-// - есть window.multiSelect.getIds() (из твоего multi_select_level.js)
-// - строки в дереве имеют .row[data-id="..."]
-// - у строки есть кнопка удаления "x" внутри .act (как в твоём app.js)
+// Работает через DOM (.row.multi), потому что range/deep патчи могут хранить state внутри себя.
 
 (function () {
-    if (typeof window === "undefined") return;
-  
-    const HOST_ID = "tree";
-  
-    function host() {
-      return document.getElementById(HOST_ID);
+  if (typeof window === "undefined") return;
+
+  const HOST_ID = "tree";
+
+  function host() {
+    return document.getElementById(HOST_ID);
+  }
+
+  function isEditingNow() {
+    const ae = document.activeElement;
+    if (!ae) return false;
+    // редактирование имени в дереве
+    if (ae.tagName === "INPUT" && ae.classList && ae.classList.contains("edit")) return true;
+    // телеграм-режим: textarea
+    if (ae.tagName === "TEXTAREA" && ae.classList && ae.classList.contains("tg-export")) return true;
+    return false;
+  }
+
+  function getMultiIdsFromDom() {
+    const h = host();
+    if (!h) return [];
+    return Array.from(h.querySelectorAll(".row.multi"))
+      .map((r) => r?.dataset?.id)
+      .filter(Boolean);
+  }
+
+  // возвращает true если a является предком b (по данным дерева app.js)
+  function isAncestorId(a, b) {
+    if (!a || !b || a === b) return false;
+    let cur = b;
+    while (true) {
+      const p = parentOf(cur); // функция из app.js :contentReference[oaicite:1]{index=1}
+      if (!p) return false;
+      if (p === a) return true;
+      cur = p;
     }
-  
-    function cssEscapeLocal(s) {
-      const v = String(s);
-      if (window.CSS && typeof CSS.escape === "function") return CSS.escape(v);
-      return v.replace(/[^a-zA-Z0-9_\-]/g, "\\$&");
+  }
+
+  function filterTopmost(ids) {
+    // если выбран и родитель, и потомок — удаляем только родителя
+    const set = new Set(ids);
+    const out = [];
+    for (const id of ids) {
+      let hasSelectedAncestor = false;
+      let cur = id;
+      while (true) {
+        const p = parentOf(cur);
+        if (!p) break;
+        if (set.has(p)) { hasSelectedAncestor = true; break; }
+        cur = p;
+      }
+      if (!hasSelectedAncestor) out.push(id);
     }
-  
-    function rowById(id) {
+    return out;
+  }
+
+  function deleteMany(ids) {
+    if (!ids || ids.length === 0) return false;
+
+    // safety: root нельзя удалять
+    const safe = ids.filter((id) => id && id !== root.id); // root из app.js :contentReference[oaicite:2]{index=2}
+    if (safe.length === 0) return false;
+
+    const topmost = filterTopmost(safe);
+
+    // 1 шаг undo на всю пачку
+    pushHistory(); // из app.js :contentReference[oaicite:3]{index=3}
+
+    // удаляем
+    for (const id of topmost) {
+      const r = findWithParent(root, id); // из app.js :contentReference[oaicite:4]{index=4}
+      if (!r || !r.parent) continue;
+      r.parent.children = (r.parent.children || []).filter((x) => x.id !== id);
+    }
+
+    // поправим selectedId, если его удалили (или он стал невалидным)
+    const stillExists = findWithParent(root, selectedId); // из app.js :contentReference[oaicite:5]{index=5}
+    if (!stillExists) {
+      // попробуем поставить на родителя первого удалённого
+      const p = parentOf(topmost[0]);
+      selectedId = p || root.id;
+    }
+
+    // попытка сбросить состояния патчей, если они экспортируют API
+    try { window.multiSelectDeep?.clear?.(); } catch (_) {}
+    try { window.multiSelectRange?.clear?.(); } catch (_) {}
+
+    // перерисовка
+    treeHasFocus = true; // из app.js :contentReference[oaicite:6]{index=6}
+    render();            // из app.js :contentReference[oaicite:7]{index=7}
+
+    // на всякий случай снять классы в DOM (если какой-то патч не сбросился)
+    try {
       const h = host();
-      if (!h) return null;
-      return h.querySelector(`.row[data-id="${cssEscapeLocal(id)}"]`);
-    }
-  
-    function isEditingNow() {
-      const ae = document.activeElement;
-      return !!(ae && ae.tagName === "INPUT" && ae.classList && ae.classList.contains("edit"));
-    }
-  
-    function selectedPrimaryRow() {
-      const h = host();
-      if (!h) return null;
-      return h.querySelector(".row.sel");
-    }
-  
-    // Соседи в одном уровне: UL > LI > .row
-    function siblingRowsForRow(row) {
-      if (!row) return [];
-      const li = row.closest("li");
-      if (!li) return [];
-      const ul = li.parentElement;
-      if (!ul || ul.tagName !== "UL") return [];
-      const lis = Array.from(ul.children).filter((x) => x.tagName === "LI");
-      const out = [];
-      for (const li2 of lis) {
-        const r = li2.querySelector(":scope > .row");
-        if (r) out.push(r);
-      }
-      return out;
-    }
-  
-    // Получить multi-строки в DOM-порядке (важно для удаления снизу вверх)
-    function getMultiRowsOrdered() {
-      const ids =
-        window.multiSelect && typeof window.multiSelect.getIds === "function"
-          ? window.multiSelect.getIds()
-          : [];
-  
-      const rows = ids.map((id) => rowById(id)).filter(Boolean);
-      if (!rows.length) return [];
-  
-      // пытаемся сортировать по порядку siblings текущего уровня
-      const primary = selectedPrimaryRow() || rows[0];
-      const sibs = siblingRowsForRow(primary);
-      const idx = new Map(sibs.map((r, i) => [r.dataset.id, i]));
-      rows.sort((a, b) => (idx.get(a.dataset.id) ?? 1e9) - (idx.get(b.dataset.id) ?? 1e9));
-  
-      return rows;
-    }
-  
-    // кликнуть строку, чтобы app.js сделал её selected
-    function clickRow(row) {
-      if (!row) return;
-      row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-    }
-  
-    // кликнуть кнопку удаления "x"
-    function clickDeleteButton(row) {
-      if (!row) return false;
-      const act = row.querySelector(".act");
-      if (!act) return false;
-  
-      const mids = Array.from(act.querySelectorAll(".btn .mid"));
-      const delMid = mids.find((m) => m.textContent.trim() === "x");
-      if (!delMid) return false;
-  
-      delMid
-        .closest(".btn")
-        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-      return true;
-    }
-  
-    // fallback: Delete key на row
-    function keyDeleteOnRow(row) {
-      if (!row) return;
-      row.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          bubbles: true,
-          cancelable: true,
-          key: "Delete",
-        })
-      );
-    }
-  
-    function deleteMulti() {
-      const rows = getMultiRowsOrdered();
-      if (rows.length <= 1) return false;
-  
-      // удаляем снизу вверх, чтобы список не "прыгал"
-      for (let i = rows.length - 1; i >= 0; i--) {
-        const r = rows[i];
-        clickRow(r);
-        const ok = clickDeleteButton(r);
-        if (!ok) keyDeleteOnRow(r);
-      }
-  
-      if (window.multiSelect && typeof window.multiSelect.clear === "function") {
-        window.multiSelect.clear();
-      }
-      return true;
-    }
-  
-    // Горячие клавиши: Delete / Backspace
-    window.addEventListener(
-      "keydown",
-      (e) => {
-        if (isEditingNow()) return;
-  
-        const hasMulti =
-          window.multiSelect &&
-          typeof window.multiSelect.size === "function" &&
-          window.multiSelect.size() > 1;
-  
-        if (!hasMulti) return;
-  
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          e.stopPropagation();
-          deleteMulti();
-        }
-      },
-      true
-    );
-  
-    // API на будущее
-    window.multiOps = {
-      delete: deleteMulti,
-    };
-  })();
-  
+      if (h) h.querySelectorAll(".row.multi").forEach((el) => el.classList.remove("multi"));
+    } catch (_) {}
+
+    return true;
+  }
+
+  function handleDeleteHotkey(e) {
+    if (isEditingNow()) return;
+
+    if (e.key !== "Delete") return;
+
+    const ids = getMultiIdsFromDom();
+    if (ids.length === 0) return; // пусть app.js удаляет одиночный
+
+    // если выделен только один — тоже считаем как multi (удаляем его пачкой, но это 1 шаг undo)
+    const did = deleteMany(ids);
+    if (!did) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // В capture, чтобы сработать раньше обработчиков app.js (которые тоже слушают Delete)
+  window.addEventListener("keydown", handleDeleteHotkey, true);
+
+  // API на будущее (перемещение и т.п.)
+  window.multiOps = {
+    deleteSelected() {
+      return deleteMany(getMultiIdsFromDom());
+    },
+    getSelectedIds() {
+      return getMultiIdsFromDom();
+    },
+  };
+})();

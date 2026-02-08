@@ -75,6 +75,38 @@ function isRedoHotkey(e) {
   return isMod(e) && !e.shiftKey && (e.code === 'KeyZ' || String(e.key).toLowerCase() === 'z');
 }
 
+function comboFromEvent(e) {
+  // как в hotkeys_editor.js: Ctrl/Cmd + Alt + Shift + Key
+  // "+" поддержим отдельно
+  if (e.key === "+") {
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    parts.push("+");
+    return parts.join("+");
+  }
+
+  const parts = [];
+  if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+
+  let key = e.key === "Esc" ? "Escape" : e.key;
+  if (key.length === 1) key = key.toUpperCase();
+  parts.push(key);
+
+  return parts.join("+");
+}
+
+function isHotkey(e, action) {
+  // hotkeys — это твой конфиг из hotkeys_config.js
+  const want = window.hotkeys?.get?.(action);
+  if (!want) return false;
+  return comboFromEvent(e) === want;
+}
+
+
 /* ========================= */
 
 function esc(s) {
@@ -441,8 +473,8 @@ input.addEventListener('dblclick', stopMouse);
       return;
     }
 
-    // allow Delete/Backspace inside input but block tree deletion
-    if (e.key === 'Delete' || e.key === 'Backspace') {
+    // allow Delete inside input but block tree deletion
+    if (e.key === 'Delete') {
       e.stopPropagation();
       return;
     }
@@ -485,6 +517,10 @@ function render() {
   }
 }
 
+function isTreeLocked() {
+  return window.hotkeysMode === "custom";
+}
+
 function makeBtn(midText, onClick) {
   const b = document.createElement('span');
   b.className = 'btn';
@@ -501,10 +537,23 @@ function makeBtn(midText, onClick) {
   r.className = 'br';
   r.textContent = ']';
 
+  // ✅ ВАЖНО: собрать содержимое кнопки
   b.append(l, m, r);
-  b.addEventListener('click', onClick);
+
+  // ✅ перехват клика с учётом lock
+  b.addEventListener('click', (e) => {
+    if (isTreeLocked()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onClick(e);
+  });
+
+  // ✅ ВАЖНО: вернуть DOM-элемент
   return b;
 }
+
 
 function renderNode(n) {
   const li = document.createElement('li');
@@ -558,6 +607,7 @@ function renderNode(n) {
   row.appendChild(act);
 
   row.addEventListener('click', () => {
+    if (isTreeLocked()) return;
     selectedId = n.id;
     treeHasFocus = true;
     render();
@@ -565,6 +615,7 @@ function renderNode(n) {
 
   // double click -> rename
   row.addEventListener('dblclick', (e) => {
+    if (isTreeLocked()) return;
     if (e.target.closest('.act')) return; // not on buttons
     e.preventDefault();
     e.stopPropagation();
@@ -575,6 +626,10 @@ function renderNode(n) {
   });
 
   row.addEventListener('keydown', (e) => {
+    if (isTreeLocked()) {
+      return;
+    }
+
     // undo/redo
     if (isUndoHotkey(e)) {
       e.preventDefault();
@@ -588,75 +643,27 @@ function renderNode(n) {
     }
 
     // Shift+Right/Left -> indent/outdent
-    if (e.shiftKey && e.key === 'ArrowRight') {
-      e.preventDefault();
-      selectedId = n.id;
-      indentNode(n.id);
-      return;
-    }
-    if (e.shiftKey && e.key === 'ArrowLeft') {
-      e.preventDefault();
-      selectedId = n.id;
-      outdentNode(n.id);
-      return;
-    }
+    // indent / outdent
+if (isHotkey(e, "indent")) { e.preventDefault(); selectedId=n.id; indentNode(n.id); return; }
+if (isHotkey(e, "outdent")) { e.preventDefault(); selectedId=n.id; outdentNode(n.id); return; }
 
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      goParent(n.id);
-      return;
-    }
+// навигация
+if (isHotkey(e, "navLeft")) { e.preventDefault(); goParent(n.id); return; }
+if (isHotkey(e, "navRight")) { e.preventDefault(); goDeeper(n.id); return; }
+if (isHotkey(e, "navUp")) { e.preventDefault(); selectedId=n.id; moveSelection(-1); return; }
+if (isHotkey(e, "navDown")) { e.preventDefault(); selectedId=n.id; moveSelection(+1); return; }
 
-    if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      goDeeper(n.id);
-      return;
-    }
+// перемещение внутри уровня
+if (isHotkey(e, "moveUp")) { e.preventDefault(); selectedId=n.id; moveWithinParent(-1); return; }
+if (isHotkey(e, "moveDown")) { e.preventDefault(); selectedId=n.id; moveWithinParent(+1); return; }
 
-    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-      e.preventDefault();
-      selectedId = n.id;
-      moveWithinParent(e.key === 'ArrowUp' ? -1 : 1);
-      return;
-    }
+// rename / delete
+if (isHotkey(e, "rename")) { e.preventDefault(); selectedId=n.id; treeHasFocus=true; render(); startRename(n.id); return; }
+if (isHotkey(e, "delete")) { e.preventDefault(); selectedId=n.id; removeSelected(); return; }
 
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      selectedId = n.id;
-      moveSelection(e.key === 'ArrowUp' ? -1 : 1);
-      return;
-    }
-
-    // Enter — переименовать
-if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-  e.preventDefault();
-  selectedId = n.id;
-  treeHasFocus = true;
-  render();
-  startRename(n.id);
-  return;
-}
-
-    if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault();
-      selectedId = n.id;
-      addChild(n.id);
-      return;
-    }
-
-    if (e.key === '+') {
-      e.preventDefault();
-      selectedId = n.id;
-      addSibling(n.id);
-      return;
-    }
-
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      selectedId = n.id;
-      removeSelected();
-      return;
-    }
+// add
+if (isHotkey(e, "addChild")) { e.preventDefault(); selectedId=n.id; addChild(n.id); return; }
+if (isHotkey(e, "addSibling")) { e.preventDefault(); selectedId=n.id; addSibling(n.id); return; }
   });
 
   li.appendChild(row);
@@ -780,65 +787,27 @@ window.addEventListener('keydown', (e) => {
   }
 
   // indent/outdent
-  if (e.shiftKey && e.key === 'ArrowRight') {
-    e.preventDefault();
-    indentNode(selectedId);
-    return;
-  }
-  if (e.shiftKey && e.key === 'ArrowLeft') {
-    e.preventDefault();
-    outdentNode(selectedId);
-    return;
-  }
+  // indent / outdent
+if (isHotkey(e, "indent"))  { e.preventDefault(); indentNode(selectedId); return; }
+if (isHotkey(e, "outdent")) { e.preventDefault(); outdentNode(selectedId); return; }
 
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    goParent(selectedId);
-    return;
-  }
+// навигация
+if (isHotkey(e, "navLeft"))  { e.preventDefault(); goParent(selectedId); return; }
+if (isHotkey(e, "navRight")) { e.preventDefault(); goDeeper(selectedId); return; }
+if (isHotkey(e, "navUp"))    { e.preventDefault(); moveSelection(-1); return; }
+if (isHotkey(e, "navDown"))  { e.preventDefault(); moveSelection(+1); return; }
 
-  if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    goDeeper(selectedId);
-    return;
-  }
+// перемещение внутри уровня
+if (isHotkey(e, "moveUp"))   { e.preventDefault(); moveWithinParent(-1); return; }
+if (isHotkey(e, "moveDown")) { e.preventDefault(); moveWithinParent(+1); return; }
 
-  if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    e.preventDefault();
-    moveWithinParent(e.key === 'ArrowUp' ? -1 : 1);
-    return;
-  }
+// rename / delete
+if (isHotkey(e, "rename")) { e.preventDefault(); render(); startRename(selectedId); return; }
+if (isHotkey(e, "delete")) { e.preventDefault(); removeSelected(); return; }
 
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    e.preventDefault();
-    moveSelection(e.key === 'ArrowUp' ? -1 : 1);
-    return;
-  }
-
-  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-    e.preventDefault();
-    render();
-    startRename(selectedId);
-    return;
-  }
-
-  if (e.key === 'Enter' && e.shiftKey) {
-    e.preventDefault();
-    addChild(selectedId);
-    return;
-  }
-
-  if (e.key === '+') {
-    e.preventDefault();
-    addSibling(selectedId);
-    return;
-  }
-
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    removeSelected();
-    return;
-  }
+// add
+if (isHotkey(e, "addChild"))   { e.preventDefault(); addChild(selectedId); return; }
+if (isHotkey(e, "addSibling")) { e.preventDefault(); addSibling(selectedId); return; }
 });
 
 /* ======== tests ======== */

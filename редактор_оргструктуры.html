@@ -8,17 +8,145 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="hint">Клик — выделить • ↑/↓ — навигация • ← — к родителю • → — глубже • Enter — переименовать (только когда есть фокус) • + — добавить «рядом» • Shift+Enter — добавить вложенное • Shift+↑/↓ — переместить среди соседей • Del/Backspace — удалить (кроме компании) • [..] — переименовать • [+] — добавить «рядом» • [>] — добавить вложенное</div>
-    <div id="tree"></div>
+    <div class="layout">
+      <div class="main">
+        <div class="hint">
+          [..] — переименовать • [+] — добавить «рядом» • [>] — добавить вложенное • [х] — удалить
+        </div>
+  
+        <div id="tree"></div>
+      </div>
+  
+      <aside class="sidebar">
+        <div class="panel-title">Горячие клавиши</div>
+      
+        <table class="hotkeys">
+          <thead>
+            <tr>
+              <th>Функция</th>
+              <th>Клавиатура</th>
+              <th>Мышь</th>
+            </tr>
+          </thead>
+        
+          <tbody>
+            <!-- Добавления -->
+            <tr>
+              <td>Добавить рядом</td>
+              <td data-action="addSibling">+</td>
+              <td>-</td>
+            </tr>
+        
+            <tr>
+              <td>Добавить вложение</td>
+              <td data-action="addChild">Shift+Enter</td>
+              <td>-</td>
+            </tr>
+        
+            <!-- Навигация -->
+            <tr>
+              <td rowspan="4">Навигация по дереву</td>
+              <td data-action="navUp">ArrowUp</td>
+              <td rowspan="4">Клик</td>
+            </tr>
+            <tr>
+              <td data-action="navDown">ArrowDown</td>
+            </tr>
+            <tr>
+              <td data-action="navLeft">ArrowLeft</td>
+            </tr>
+            <tr>
+              <td data-action="navRight">ArrowRight</td>
+            </tr>
+        
+            <!-- Перемещение внутри уровня -->
+            <tr>
+              <td rowspan="2">Перемещение (внутри уровня)</td>
+              <td data-action="moveUp">Shift+ArrowUp</td>
+              <td rowspan="2">-</td>
+            </tr>
+            <tr>
+              <td data-action="moveDown">Shift+ArrowDown</td>
+            </tr>
+        
+            <!-- Indent / Outdent -->
+            <tr>
+              <td rowspan="2">Перемещение (между уровнями)</td>
+              <td data-action="indent">Shift+ArrowRight</td>
+              <td rowspan="2">-</td>
+            </tr>
+            <tr>
+              <td data-action="outdent">Shift+ArrowLeft</td>
+            </tr>
+        
+            <!-- Диапазон (один уровень) -->
+            <tr>
+              <td rowspan="2">Диапазон (только один уровень)</td>
+              <td data-action="rangeUp">Shift+Ctrl/Cmd+ArrowUp</td>
+              <td rowspan="2">Shift+Ctrl/Cmd+Клик</td>
+            </tr>
+            <tr>
+              <td data-action="rangeDown">Shift+Ctrl/Cmd+ArrowDown</td>
+            </tr>
+        
+            <!-- Глубокое выделение (ветка) -->
+            <tr>
+              <td rowspan="2">Глубокое выделение (в ветке)</td>
+              <td data-action="deepUp">Shift+Alt+ArrowUp</td>
+              <td rowspan="2">Shift+Alt+Клик</td>
+            </tr>
+            <tr>
+              <td data-action="deepDown">Shift+Alt+ArrowDown</td>
+            </tr>
+        
+            <!-- Переименовать / удалить -->
+            <tr>
+              <td>Переименовать</td>
+              <td data-action="rename">Enter</td>
+              <td>Двойной клик</td>
+            </tr>
+        
+            <tr>
+              <td>Удалить</td>
+              <td data-action="delete">Delete</td>
+              <td>-</td>
+            </tr>
+          </tbody>
+        </table>
+      
+        <button id="hotkeysResetBtn">Сбросить к стандартным</button>
+        <label style="display:block;margin:10px 0;">
+          <input type="checkbox" id="hkModeToggle">
+          Кастомный режим хоткеев
+        </label>
+      
+        <div class="panel-note">
+          <b>Подсветка:</b> выбранные элементы отмечаются голубым.<br>
+          <b>Отменить действие:</b> Ctrl/Cmd+X
+          <b>Повторить действие:</b> Ctrl/Cmd+Z
+        </div>
+      </aside>
+      
+    </div>
   </div>
+  
+
+
+  
+
+
 
   <button id="tgToggle" onclick="toggleTelegramMode()">Режим Telegram</button>
+
+  <script src="hotkeys_config.js"></script>
+  <script src="hotkeys_editor.js"></script>
 
   <script src="app.js"></script>
   <script src="multi_select_patch.js"></script>
   <script src="multi_select_deep.js"></script>
   <script src="multi_ops.js"></script>
-
+  <script src="multi_move.js"></script>
+  <script src="multi_move_hierarchy.js"></script>
   <script src="tg_export_mode.js"></script>
 </body>
 </html>
