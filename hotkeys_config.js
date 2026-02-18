@@ -5,7 +5,7 @@
 
   const DEFAULTS = {
     // Добавления
-    addSibling: "+",
+    addSibling: "Enter",
     addChild: "Shift+Enter",
 
     // Навигация
@@ -33,8 +33,11 @@
     deepClick: "Shift+Alt+Click",
 
     // Прочее
-    rename: "Enter",
-    delete: "Delete",
+    rename: "q",
+    delete: "Backspace",
+
+    undo: "Ctrl/Cmd+X",
+    redo: "Ctrl/Cmd+Z",
   };
 
   let current = Object.fromEntries(

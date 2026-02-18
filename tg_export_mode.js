@@ -158,8 +158,12 @@
     copyBtn.onclick = async () => {
       try {
         await navigator.clipboard.writeText(ta.value);
+        const originalText = copyBtn.textContent;
         copyBtn.textContent = 'Скопировано ✓';
-        setTimeout(() => (copyBtn.textContent = 'Копировать для Telegram'), 900);
+
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+        }, 900);
       } catch (e) {
         alert('Не получилось скопировать. Попробуй выделить текст вручную и Ctrl+C.');
       }
@@ -173,14 +177,15 @@
         root.level = newTree.level;
         root.name = newTree.name;
         root.children = newTree.children;
-
+    
         selectedId = root.id;
       }
-
-      tgMode = false;
-      updateToggleBtn();
-      window.render();
+    
+      // НЕ выходим из tg-режима
+      backBtn.textContent = 'Сохранить ✓';
+      setTimeout(() => (backBtn.textContent = 'Сохранить'), 900);
     };
+    
 
     bar.append(backBtn, copyBtn);
     host.append(bar, ta);
@@ -210,7 +215,7 @@
   function updateToggleBtn() {
     const b = document.getElementById('tgToggle');
     if (!b) return;
-    b.textContent = tgMode ? 'Отменить' : 'Режим Telegram';
+    b.textContent = tgMode ? 'Стандартный режим' : 'Текстовый режим';
   }
 
   window.toggleTelegramMode = function () {

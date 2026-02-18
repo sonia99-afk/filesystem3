@@ -69,14 +69,26 @@
     });
   }
 
+  function prettyHotkey(v) {
+    if (typeof v !== "string") return v;
+  
+    return v
+      .replace(/ArrowUp/g, "↑")
+      .replace(/ArrowDown/g, "↓")
+      .replace(/ArrowLeft/g, "←")
+      .replace(/ArrowRight/g, "→");
+  }
+
   function syncTableFromConfig() {
     document.querySelectorAll("td[data-action]").forEach(td => {
       const action = td.dataset.action;
       const v = hotkeys.get(action);
-      if (typeof v === "string" && v.length) td.textContent = v;
+      if (typeof v === "string" && v.length) td.textContent = prettyHotkey(v);
     });
     updateConflicts();
   }
+
+  
 
   // ✅ главное: всегда возвращаем прежний текст (prevText), а не hotkeys.get(...)
   function clearEditing(cancelled) {
@@ -105,6 +117,7 @@
   }
 
   function init() {
+
     // заполним из конфига, если есть
     syncTableFromConfig();
 
@@ -186,7 +199,8 @@
       hotkeys.set(action, combo);
 
       // показать нормализованное значение
-      editingCell.textContent = hotkeys.get(action) || combo;
+      const normalized = hotkeys.get(action) || combo;
+editingCell.textContent = prettyHotkey(normalized);
 
       clearEditing(false);
       updateConflicts();
@@ -209,7 +223,8 @@
 
       const combo = comboFromMouseEvent(e);
       hotkeys.set(action, combo);
-      editingCell.textContent = hotkeys.get(action) || combo;
+      const normalized = hotkeys.get(action) || combo;
+editingCell.textContent = prettyHotkey(normalized);
 
       clearEditing(false);
       updateConflicts();

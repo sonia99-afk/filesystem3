@@ -68,11 +68,13 @@ function redo() {
 function isMod(e) { return (e.metaKey || e.ctrlKey) && !e.altKey; }
 
 function isUndoHotkey(e) {
-  return isMod(e) && !e.shiftKey && (e.code === 'KeyX' || String(e.key).toLowerCase() === 'x');
+  if (window.hotkeys?.get && isHotkey(e, "undo")) return true;
+  return isMod(e) && !e.shiftKey && (e.code === "KeyX" || String(e.key).toLowerCase() === "x");
 }
 
 function isRedoHotkey(e) {
-  return isMod(e) && !e.shiftKey && (e.code === 'KeyZ' || String(e.key).toLowerCase() === 'z');
+  if (window.hotkeys?.get && isHotkey(e, "redo")) return true;
+  return isMod(e) && !e.shiftKey && (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
 }
 
 function comboFromEvent(e) {
@@ -270,6 +272,9 @@ function indentNode(id) {
 
   pushHistory();
 
+  const maxL = getMaxLevelInSubtree(r.node);
+if (maxL + 1 > LEVEL.ROLE) return; // запретить indent
+
   // при indent узел становится на уровень глубже
   if (!shiftSubtreeLevel(r.node, +1)) return;
 
@@ -326,6 +331,14 @@ function shiftSubtreeLevel(node, delta) {
     if (!ok) return false;
   }
   return true;
+}
+
+function getMaxLevelInSubtree(node) {
+  let max = node.level;
+  for (const ch of (node.children || [])) {
+    max = Math.max(max, getMaxLevelInSubtree(ch));
+  }
+  return max;
 }
 
 
@@ -764,6 +777,7 @@ document.getElementById('tree').addEventListener('click', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
+  if (isTreeLocked()) return;
   const active = document.activeElement;
   const isRow = active && active.classList && active.classList.contains('row');
   const isEditing = active && active.tagName === 'INPUT' && active.classList && active.classList.contains('edit');
