@@ -33,7 +33,7 @@
     deepClick: "Shift+Alt+Click",
 
     // Прочее
-    rename: "q",
+    rename: "ё"
     delete: "Backspace",
 
     undo: "Ctrl/Cmd+X",

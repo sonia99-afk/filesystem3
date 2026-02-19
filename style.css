@@ -156,7 +156,7 @@ body{ margin:0; font-family:Consolas,"Courier New",monospace; background:#fff; c
 }
 
 .sidebar{
-  flex:0 0 500px;
+  flex:0 0 600px;
   border:1px solid #000;
   padding:12px;
   background:#fff;
@@ -228,24 +228,29 @@ td.conflict{
 }
 
 
-td.ui-icon {
-  text-align: center;
+.ui-btn-icon {
+  width: 16px;
+  height: 12px;
+
+  /* SVG как у твоих кнопок слева */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  /* Рисуем “кнопку” вокруг SVG */
+  display: inline-block;
+  padding: 4px 5px;           /* подгоняет размер как у маленькой кнопки */
+  background: #f0f0f0;        /* стандартный серый */
+  border: 0.5px solid #000000;  /* стандартная рамка */
+  border-radius: 2px;
+
+  /* чтобы не было “прыжка” по базовой линии */
   vertical-align: middle;
 }
 
-td.ui-icon .icon {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 2;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.85;
-}
 
-td.ui-icon .icon {
-  padding: 4px;
-  border: 1px solid #bbb;
-  border-radius: 3px;
+.hotkeys td:nth-child(4) {
+  min-width: 80px;
 }

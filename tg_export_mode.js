@@ -46,8 +46,8 @@
   function dashByLevel(level) {
     switch (level) {
       case 1: return '- ';
-      case 2: return '-- ';
-      case 3: return '--- ';
+      case 2: return '- - ';
+      case 3: return '- - - ';
       default: return '';
     }
   }
@@ -82,12 +82,14 @@
     let newRoot = null;
 
     for (const line of lines) {
-      const m = line.match(/^(-*)\s*(.+)$/);
-      if (!m) continue;
+      const m = line.match(/^((?:-\s*)*)\s*(.+)$/);
+if (!m) continue;
 
-      const level = m[1].length;
-      const name = m[2].trim();
-      if (!name) continue;
+// считаем количество '-' в префиксе (пробелы игнорируем)
+const level = (m[1].match(/-/g) || []).length;
+
+const name = m[2].trim();
+if (!name) continue;
 
       const node = {
         id: Math.random().toString(36).slice(2),
@@ -143,6 +145,16 @@
     ta.style.width = '35%';
     ta.style.minHeight = '300px';
 
+    const SAVE_TEXT = 'Сохранить';
+const SAVED_TEXT = 'Сохранить ✓';
+
+let isSaved = false;
+
+function setSavedState(saved) {
+  isSaved = saved;
+  backBtn.textContent = saved ? SAVED_TEXT : SAVE_TEXT;
+}
+
         // чтобы события из tg-UI не долетали до обработчика #tree.click в app.js
         const stop = (e) => e.stopPropagation();
 
@@ -169,21 +181,28 @@
       }
     };
 
+    ta.addEventListener('input', () => {
+      if (isSaved) setSavedState(false);
+    });
+
     backBtn.onclick = () => {
       const newTree = treeFromAscii(ta.value);
-      if (newTree) {
-        // мутируем root in-place (root/selectedId — из app.js, в общем scope)
-        root.id = newTree.id;
-        root.level = newTree.level;
-        root.name = newTree.name;
-        root.children = newTree.children;
-    
-        selectedId = root.id;
-      }
-    
-      // НЕ выходим из tg-режима
-      backBtn.textContent = 'Сохранить ✓';
-      setTimeout(() => (backBtn.textContent = 'Сохранить'), 900);
+  if (!newTree) {
+    alert('Не удалось распознать дерево. Проверь формат.');
+    return;
+  }
+
+  // мутируем root in-place
+  root.id = newTree.id;
+  root.level = newTree.level;
+  root.name = newTree.name;
+  root.children = newTree.children;
+
+  selectedId = root.id;
+
+  // ✅ помечаем как сохранённое (и остаётся так)
+  setSavedState(true);
+      
     };
     
 

@@ -10,7 +10,7 @@ function makeNode(level, name) {
 const root = makeNode(LEVEL.COMPANY, 'Компания');
 let selectedId = root.id;
 let treeHasFocus = true;
-let renamingId = null;
+
 
 /* =========================
    Undo / Redo (Cmd+X = undo, Cmd+Z = redo)
@@ -378,128 +378,6 @@ function goDeeper(fromId) {
   render();
 }
 
-/* ======== Rename ======== */
-
-function startRename(id) {
-  if (!id) return;
-  const r = findWithParent(root, id);
-  if (!r) return;
-
-  renamingId = id;
-
-  const host = document.getElementById('tree');
-  const row = host.querySelector(`.row[data-id="${cssEscape(id)}"]`);
-  if (!row) return;
-
-  const cur = r.node.name || '';
-  row.innerHTML = '';
-
-  const input = document.createElement('input');
-  input.className = 'edit';
-  input.type = 'text';
-  input.value = cur;
-  // чтобы клик/drag по input не триггерил .row.click и не делал render()
-  const stopMouse = (e) => e.stopPropagation();
-
-// важно: pointerdown покрывает мышь+тач, mousedown — на всякий случай
-input.addEventListener('pointerdown', stopMouse);
-input.addEventListener('pointerup', stopMouse);
-input.addEventListener('mousedown', stopMouse);
-input.addEventListener('mouseup', stopMouse);
-input.addEventListener('click', stopMouse);
-input.addEventListener('dblclick', stopMouse);
-  input.style.width = Math.max(120, Math.min(520, (cur.length + 4) * 9)) + 'px';
-
-  function commit() {
-    const t = input.value.trim();
-    if (t && t !== r.node.name) {
-      pushHistory();
-      r.node.name = t;
-    }
-    renamingId = null;
-    render();
-  }
-
-  function cancel() {
-    renamingId = null;
-    render();
-  }
-
-  input.addEventListener('keydown', (e) => {
-    // undo/redo must work even during editing
-    if (isUndoHotkey(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      undo();
-      return;
-    }
-    if (isRedoHotkey(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      redo();
-      return;
-    }
-
-    // Enter — save name (and don't create a new node)
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      commit();
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      cancel();
-      return;
-    }
-
-    // prevent tree navigation/indent on arrows while editing
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      e.stopPropagation(); // browser handles caret / Shift+selection
-      return;
-    }
-
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.stopPropagation();
-
-      // For single-line input: Shift+Up/Down = select to start/end
-      if (e.shiftKey) {
-        e.preventDefault();
-        const len = input.value.length;
-        const a = input.selectionStart ?? 0;
-        const b = input.selectionEnd ?? 0;
-
-        // anchor of selection
-        const anchor = (input._selAnchor ?? (b > a ? a : a));
-        input._selAnchor = anchor;
-
-        if (e.key === 'ArrowUp') {
-          input.setSelectionRange(0, anchor);
-        } else {
-          input.setSelectionRange(anchor, len);
-        }
-      } else {
-        input._selAnchor = null;
-      }
-      return;
-    }
-
-    // allow Delete inside input but block tree deletion
-    if (e.key === 'Delete') {
-      e.stopPropagation();
-      return;
-    }
-  });
-
-  input.addEventListener('blur', () => { commit(); });
-
-  row.appendChild(input);
-  input.focus({ preventScroll: true });
-  input.select();
-}
-
 /* ======== Render ======== */
 
 function focusSelectedRow() {
@@ -523,11 +401,8 @@ function render() {
 
   if (treeHasFocus) focusSelectedRow();
 
-  if (renamingId) {
-    const id = renamingId;
-    renamingId = null;
-    startRename(id);
-  }
+  const rid = consumeRenameRequest?.();
+if (rid) startRename(rid);
 }
 
 function isTreeLocked() {
