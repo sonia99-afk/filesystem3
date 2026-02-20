@@ -224,10 +224,33 @@ function removeSelected() {
   const r = findWithParent(root, selectedId);
   if (!r || !r.parent) return;
 
+  const parent = r.parent;
+  const arr = parent.children;
+  const idx = arr.findIndex(x => x.id === selectedId);
+  if (idx < 0) return;
+
   pushHistory();
 
-  r.parent.children = r.parent.children.filter(x => x.id !== selectedId);
-  selectedId = r.parent.id;
+  // запоминаем соседа ДО удаления
+  let nextSelected = null;
+
+  // сначала пробуем выбрать следующего
+  if (idx + 1 < arr.length) {
+    nextSelected = arr[idx + 1].id;
+  }
+  // если следующего нет — предыдущего
+  else if (idx - 1 >= 0) {
+    nextSelected = arr[idx - 1].id;
+  }
+  // если вообще нет соседей — родителя
+  else {
+    nextSelected = parent.id;
+  }
+
+  // удаляем
+  parent.children.splice(idx, 1);
+
+  selectedId = nextSelected;
   treeHasFocus = true;
   render();
 }
