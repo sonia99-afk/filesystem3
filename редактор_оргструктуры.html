@@ -11,7 +11,7 @@
     <div class="layout">
       <div class="main">
         <div class="hint">
-          <button onclick="undo()">
+          <button onclick="undo()" class="btn-undo">
           <svg viewBox="0 0 24 24">
             <path d="M9 14L4 9l5-5"/>
             <path d="M4 9h9a7 7 0 1 1 0 14h-1"/>
@@ -25,6 +25,7 @@
           </svg>
           </button>
           <button id="tgToggle" onclick="toggleTelegramMode()">Режим Telegram</button>
+          <button id="tgCopy">Копировать</button>
         </div>
   
         <div id="tree"></div>
@@ -113,7 +114,7 @@
             <tr>
               <td rowspan="2">Глубокое выделение (в ветке)</td>
               <td data-action="deepUp">Shift+Alt+ArrowUp</td>
-              <td rowspan="2">Shift+Alt+Клик</td>
+              <td rowspan="2">Shift+Ctrl/Cmd+Click</td>
               <td rowspan="2">-</td>
             </tr>
             <tr>

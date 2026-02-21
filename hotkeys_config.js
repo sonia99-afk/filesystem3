@@ -23,21 +23,21 @@
     outdent: "Shift+ArrowLeft",
 
     // Диапазон (один уровень)
-    rangeUp: "Shift+Ctrl/Cmd+ArrowUp",
-    rangeDown: "Shift+Ctrl/Cmd+ArrowDown",
-    rangeClick: "Shift+Ctrl/Cmd+Click",
+    rangeUp: "Shift+Alt+Ctrl/Cmd+ArrowUp",
+    rangeDown: "Shift+Alt+Ctrl/Cmd+ArrowDown",
+    rangeClick: "Shift+Alt+Ctrl/Cmd+Click",
 
     // Глубокое выделение (ветка)
-    deepUp: "Shift+Alt+ArrowUp",
-    deepDown: "Shift+Alt+ArrowDown",
-    deepClick: "Shift+Alt+Click",
+    deepUp: "Shift+Ctrl/Cmd+ArrowUp",
+    deepDown: "Shift+Ctrl/Cmd+ArrowDown",
+    deepClick: "Shift+Ctrl/Cmd+Click",
 
     // Прочее
     rename: "ё",
     delete: "Backspace",
 
     undo: "Ctrl/Cmd+X",
-    redo: "Ctrl/Cmd+Z",
+    redo: "Ctrl/Cmd+Shift+X",
   };
 
   let current = Object.fromEntries(

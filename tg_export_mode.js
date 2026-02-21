@@ -5,6 +5,9 @@
 (function () {
   let tgMode = false;
   let lastAscii = '';
+  function getCopyBtn() {
+    return document.getElementById('tgCopy');
+  }
 
   function getNodeLabelFromRow(row) {
     const clone = row.cloneNode(true);
@@ -125,6 +128,11 @@ if (!name) continue;
     const host = document.getElementById('tree');
     if (!host) return;
 
+    const copyBtn = getCopyBtn();
+if (copyBtn) {
+  copyBtn.style.display = 'inline-block';
+}
+
     const tree = buildTreeFromDom();
     lastAscii = tree ? asciiFromTree(tree) : '```\n(дерево не найдено)\n```';
 
@@ -136,14 +144,30 @@ if (!name) continue;
     const backBtn = document.createElement('button');
     backBtn.textContent = 'Сохранить';
 
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Копировать';
+    
 
     const ta = document.createElement('textarea');
+
+
     ta.className = 'tg-export';
     ta.value = lastAscii;
     ta.style.width = '35%';
     ta.style.minHeight = '300px';
+
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(ta.value);
+          const originalText = copyBtn.textContent;
+          copyBtn.textContent = 'Скопировано ✓';
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+          }, 900);
+        } catch (e) {
+          alert('Не получилось скопировать.');
+        }
+      };
+    }
 
     const SAVE_TEXT = 'Сохранить';
 const SAVED_TEXT = 'Сохранить ✓';
@@ -167,19 +191,7 @@ function setSavedState(saved) {
         ta.addEventListener('click', stop);
     
 
-    copyBtn.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(ta.value);
-        const originalText = copyBtn.textContent;
-        copyBtn.textContent = 'Скопировано ✓';
-
-        setTimeout(() => {
-          copyBtn.textContent = originalText;
-        }, 900);
-      } catch (e) {
-        alert('Не получилось скопировать. Попробуй выделить текст вручную и Ctrl+C.');
-      }
-    };
+    
 
     ta.addEventListener('input', () => {
       if (isSaved) setSavedState(false);
@@ -206,8 +218,11 @@ function setSavedState(saved) {
     };
     
 
-    bar.append(backBtn, copyBtn);
-    host.append(bar, ta);
+    bar.append(backBtn);
+
+host.append(ta);   // сначала textarea
+bar.style.marginTop = '16px';
+host.append(bar); 
   }
 
   function patchRender() {
