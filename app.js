@@ -11,6 +11,12 @@ const root = makeNode(LEVEL.COMPANY, 'Компания');
 let selectedId = root.id;
 let treeHasFocus = true;
 
+//чтука для соло работы шифт, альт и тд. тоже сомнительная и не првереная
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "OS"]);
+function isModifierKey(key) {
+    return MODIFIER_KEYS.has(key);
+}
+
 
 /* =========================
    Undo / Redo (Cmd+X = undo, Cmd+Z = redo)
@@ -77,16 +83,28 @@ function isRedoHotkey(e) {
   return isMod(e) && !e.shiftKey && (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
 }
 
+
+ 
+//функция для добавления соло шифт, альт и тд. не провереная, выше рабочая старая
 function comboFromEvent(e) {
-  // как в hotkeys_editor.js: Ctrl/Cmd + Alt + Shift + Key
-  // "+" поддержим отдельно
+  // обработка пробела
+if (e.key === " ") {
+  const parts = [];
+  if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  parts.push("Space");
+  return parts.join("+");
+}
+
+  // обработка "+"
   if (e.key === "+") {
-    const parts = [];
-    if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-    if (e.altKey) parts.push("Alt");
-    if (e.shiftKey) parts.push("Shift");
-    parts.push("+");
-    return parts.join("+");
+      const parts = [];
+      if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+      parts.push("+");
+      return parts.join("+");
   }
 
   const parts = [];
@@ -95,8 +113,11 @@ function comboFromEvent(e) {
   if (e.shiftKey) parts.push("Shift");
 
   let key = e.key === "Esc" ? "Escape" : e.key;
-  if (key.length === 1) key = key.toUpperCase();
-  parts.push(key);
+  // добавляем только если это не клавиша-модификатор
+  if (!isModifierKey(key)) {
+      if (key.length === 1) key = key.toUpperCase();
+      parts.push(key);
+  }
 
   return parts.join("+");
 }

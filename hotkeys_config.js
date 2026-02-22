@@ -25,12 +25,12 @@
     // Диапазон (один уровень)
     rangeUp: "Shift+Alt+Ctrl/Cmd+ArrowUp",
     rangeDown: "Shift+Alt+Ctrl/Cmd+ArrowDown",
-    rangeClick: "Shift+Alt+Ctrl/Cmd+Click",
+    rangeClick: "Ctrl/Cmd+Alt+Shift+Click",
 
     // Глубокое выделение (ветка)
     deepUp: "Shift+Ctrl/Cmd+ArrowUp",
     deepDown: "Shift+Ctrl/Cmd+ArrowDown",
-    deepClick: "Shift+Ctrl/Cmd+Click",
+    deepClick: "Ctrl/Cmd+Shift+Click",
 
     // Прочее
     rename: "ё",
@@ -55,6 +55,8 @@
     if (k === "Esc") return "Escape";
     if (k === "Del") return "Delete";
     if (k === "Backspace") return "Backspace";
+    if (k === " " || k === "Spacebar") return "Space";
+if (k === "Space") return "Space";
     return k.length === 1 ? k.toUpperCase() : k;
   }
 

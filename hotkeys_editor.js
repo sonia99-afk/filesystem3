@@ -25,6 +25,15 @@
   }
 
   function comboFromKeyboardEvent(e) {
+    if (e.key === " ") {
+      const parts = [];
+      if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+      parts.push("Space");
+      return parts.join("+");
+    }
+
     // "+" показываем как "+"
     if (e.key === "+") {
       const onlyShift = e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
@@ -146,7 +155,7 @@
         editingCell.classList.add("editing-click");
         editingCell.textContent = "Кликните мышью с модификаторами… (Esc — отмена)";
       } else {
-        editingCell.textContent = "Нажмите комбинацию… (Esc — отмена)";
+        editingCell.textContent = "Нажмите комбинацию… (Tab — сохранение, Esc — отмена)";
       }
     });
 
@@ -172,6 +181,41 @@
         return;
       }
 
+
+
+      
+      // штука для работы соло шифт, альт и тд. почему-то сомнения есть 
+      if (e.key === "Tab") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      
+        const action = editingCell.dataset.action;
+        const pending = editingCell.dataset.pendingCombo;
+      
+        // ✅ если пользователь НИЧЕГО не вводил — просто отменяем и возвращаем старое значение
+        if (!pending) {
+          clearEditing(true);      // вернёт editingCell.dataset.prevText
+          updateConflicts();
+          return;
+        }
+      
+        // ✅ иначе — сохраняем pendingCombo
+        hotkeys.set(action, pending);
+      
+        const normalized = hotkeys.get(action) || pending;
+        editingCell.textContent = prettyHotkey(normalized);
+      
+        delete editingCell.dataset.pendingCombo;
+      
+        clearEditing(false);
+        updateConflicts();
+        return;
+      }
+
+
+
+
       // в режиме назначения клика игнорируем клавиатуру
       if (isClickAction) {
         e.preventDefault();
@@ -196,14 +240,10 @@
       }
 
       const combo = comboFromKeyboardEvent(e);
-      hotkeys.set(action, combo);
 
-      // показать нормализованное значение
-      const normalized = hotkeys.get(action) || combo;
-editingCell.textContent = prettyHotkey(normalized);
-
-      clearEditing(false);
-      updateConflicts();
+// просто показать комбинацию, НЕ сохранять
+editingCell.dataset.pendingCombo = combo;
+editingCell.textContent = prettyHotkey(combo);
     }, true);
 
     // Мышь для click-actions

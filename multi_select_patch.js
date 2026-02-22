@@ -259,7 +259,7 @@
         }
 
         // обычный клик (без Shift+Cmd) — сбрасывает мультивыделение
-        if (!(e.shiftKey && isCmdLike(e))) {
+        if (!(e.shiftKey && isCmdLike(e) && e.altKey)) {
           if (!synth) reset();
           return;
         }

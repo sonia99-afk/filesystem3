@@ -1,8 +1,7 @@
 body{ margin:0; font-family:Consolas,"Courier New",monospace; background:#fff; color:#000; }
     .wrap{ padding-left: 63px; padding-right: 63px; padding-top: 31px; max-width:980px; }
     .hint{ font-size:12px; margin-bottom:42px;   display:flex;        /* ← добавить */
-      align-items:center; display:flex;
-      gap:10px;}
+      align-items:center}
 
     .hint button svg {
       width: 13px;

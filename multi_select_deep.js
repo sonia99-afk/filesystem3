@@ -252,13 +252,12 @@
             return;
           }
   
-          // обычный клик без Shift+Alt — сброс "deep" выделения
-          if (!(e.shiftKey && e.altKey)) {
-            // сбрасываем deep-состояние, но чистим только deep-подсветку (через applyClasses, которая теперь безопасна)
-            reset();
-            applyClasses();
-            return;
-          }
+          // обычный клик без Ctrl/Cmd+Shift — сброс "deep" выделения
+if (!(e.shiftKey && (e.ctrlKey || e.metaKey))) {
+  reset();
+  applyClasses();
+  return;
+}
   
           // Shift+Alt+click toggle
           e.preventDefault();
