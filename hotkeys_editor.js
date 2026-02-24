@@ -3,6 +3,8 @@
 // - Esc всегда корректно отменяет (возвращает прежний текст ячейки)
 // - Click-actions (rangeClick/deepClick) назначаются кликом мыши
 // - Конфликты подсвечиваются красным бордером
+// - Сохранение: на отпускание ВСЕХ клавиш (keyup когда set пуст)
+// ВАЖНО: Shift/Alt/Ctrl/Meta — обычные клавиши, не "модификаторы".
 
 (function () {
   if (typeof window === "undefined") return;
@@ -10,12 +12,7 @@
   let editingCell = null;
   let editingPressed = new Set();
 
-  const MOD_KEYS = new Set(["Shift", "Alt", "Control", "Meta"]);
   const CLICK_ACTIONS = new Set(["rangeClick", "deepClick"]);
-
-  function isModifierOnlyKey(key) {
-    return MOD_KEYS.has(key);
-  }
 
   function isEditingNow() {
     const ae = document.activeElement;
@@ -25,48 +22,76 @@
     return false;
   }
 
-  function normalizeKeyTokenFromEventKey(key) {
+  // Layout-independent tokens for letters/digits (RU layout safe):
+  // KeyA -> A, Digit1 -> 1, Numpad1 -> 1
+  function normalizeKeyTokenFromEvent(e) {
+    if (!e) return "";
+    const code = String(e.code || "");
+
+    // Letters: KeyA..KeyZ
+    if (code.startsWith("Key") && code.length === 4) {
+      return code.slice(3).toUpperCase();
+    }
+    // Digits: Digit0..Digit9
+    if (code.startsWith("Digit") && code.length === 6) {
+      return code.slice(5);
+    }
+    // Numpad digits: Numpad0..Numpad9
+    if (code.startsWith("Numpad") && code.length === 7 && /[0-9]/.test(code.slice(6))) {
+      return code.slice(6);
+    }
+
+    // Fallback: use e.key for special keys / modifiers
+    const key = e.key;
     if (!key) return "";
-    if (key === " ") return "Space";
-    if (key === "Spacebar") return "Space";
+
+    if (key === " " || key === "Spacebar") return "Space";
     if (key === "Esc") return "Escape";
-    // IMPORTANT: literal "+" breaks "A+B" serialization
+
+    // IMPORTANT: literal "+" breaks "A+B" serialization in our split("+") parsers
     if (key === "+") return "Plus";
+
+    // Mod keys as normal keys
+    if (key === "Shift") return "Shift";
+    if (key === "Alt") return "Alt";
+    if (key === "Control") return "Control";
+    if (key === "Meta" || key === "OS") return "Control";
+
     if (key.length === 1) return key.toUpperCase();
     return key;
   }
-  
-  function buildChordCombo(e, keysSet) {
-    const parts = [];
-    if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-    if (e.altKey) parts.push("Alt");
-    if (e.shiftKey) parts.push("Shift");
-  
+
+  function buildChordComboFromSet(keysSet) {
     const keys = Array.from(keysSet);
     keys.sort((a, b) => String(a).localeCompare(String(b)));
-  
+
     // Historical special-case: Shift + "+" stored as just "+"
-    const onlyShift = e.shiftKey && !(e.ctrlKey || e.metaKey) && !e.altKey;
-    if (onlyShift && keys.length === 1 && keys[0] === "Plus") return "+";
-  
-    parts.push(...keys);
-    return parts.join("+");
+    // Теперь Shift — обычная клавиша, но этот кейс оставим:
+    // если хоткей ровно "Shift"+"Plus" -> сохраним как "+"
+    if (keys.length === 2 && keys.includes("Shift") && keys.includes("Plus")) return "+";
+
+    return keys.join("+");
   }
 
   function comboFromMouseEvent(e) {
-    const parts = [];
-    if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-    if (e.altKey) parts.push("Alt");
-    if (e.shiftKey) parts.push("Shift");
-    parts.push("Click");
-    return parts.join("+");
+    // Click-actions: формируем как набор клавиш (Shift/Control/Alt/Meta как обычные)
+    const keys = [];
+    if (e.shiftKey) keys.push("Shift");
+    if (e.altKey) keys.push("Alt");
+    if (e.ctrlKey || e.metaKey) keys.push("Control");
+    keys.push("Click");
+    keys.sort((a, b) => String(a).localeCompare(String(b)));
+    return keys.join("+");
   }
 
   function updateConflicts() {
     const conflicts = hotkeys.findConflicts();
 
-    document.querySelectorAll("td[data-action].conflict").forEach(td => td.classList.remove("conflict"));
-    document.querySelectorAll("td[data-action]").forEach(td => {
+    document
+      .querySelectorAll("td[data-action].conflict")
+      .forEach((td) => td.classList.remove("conflict"));
+
+    document.querySelectorAll("td[data-action]").forEach((td) => {
       const action = td.dataset.action;
       if (conflicts.has(action)) td.classList.add("conflict");
     });
@@ -74,9 +99,9 @@
 
   function prettyHotkey(v) {
     if (typeof v !== "string") return v;
-  
+
     return v
-    .replace(/\bPlus\b/g, "+")
+      .replace(/\bPlus\b/g, "+")
       .replace(/ArrowUp/g, "↑")
       .replace(/ArrowDown/g, "↓")
       .replace(/ArrowLeft/g, "←")
@@ -89,9 +114,8 @@
     if (cell.textContent !== t) cell.textContent = t;
   }
 
-
   function syncTableFromConfig() {
-    document.querySelectorAll("td[data-action]").forEach(td => {
+    document.querySelectorAll("td[data-action]").forEach((td) => {
       const action = td.dataset.action;
       const v = hotkeys.get(action);
       if (typeof v === "string" && v.length) {
@@ -102,54 +126,48 @@
     updateConflicts();
   }
 
-  
-
   function clearEditing(cancelled) {
     if (!editingCell) return;
-  
+
     const action = editingCell.dataset.action;
     editingCell.classList.remove("editing");
     editingCell.classList.remove("editing-click");
-  
+
     if (cancelled) {
       const prev = editingCell.dataset.prevText;
       if (typeof prev === "string") {
         setCellTextIfChanged(editingCell, prev);
       } else {
-        // fallback
         const v = hotkeys.get(action);
         if (typeof v === "string" && v.length) setCellTextIfChanged(editingCell, prettyHotkey(v));
       }
     }
-  
+
     delete editingCell.dataset.prevText;
+    delete editingCell.dataset.pendingCombo;
     editingPressed = new Set();
     editingCell = null;
   }
 
   function init() {
-
-    // заполним из конфига, если есть
     syncTableFromConfig();
 
     document.addEventListener("dblclick", (e) => {
       const cell = e.target?.closest?.("td[data-action]");
       if (!cell) return;
       if (isEditingNow()) return;
-      if (window.hotkeysMode !== "custom") {
-        // опционально: короткое уведомление
-        alert("Включите кастомный режим хоткеев, чтобы переназначать клавиши.");
-        return;}
 
-      // закрываем прошлый редактор
+      if (window.hotkeysMode !== "custom") {
+        alert("Включите кастомный режим хоткеев, чтобы переназначать клавиши.");
+        return;
+      }
+
       if (editingCell) clearEditing(true);
 
       editingCell = cell;
-
       editingPressed = new Set();
-delete editingCell.dataset.pendingCombo;
+      delete editingCell.dataset.pendingCombo;
 
-      // ✅ запомнить прежний текст для Esc
       editingCell.dataset.prevText = editingCell.textContent;
 
       const action = editingCell.dataset.action;
@@ -158,145 +176,153 @@ delete editingCell.dataset.pendingCombo;
       editingCell.classList.add("editing");
       if (isClickAction) {
         editingCell.classList.add("editing-click");
-        setCellTextIfChanged(editingCell, "Кликните мышью с модификаторами… (Esc — отмена)");
+        setCellTextIfChanged(editingCell, "Кликните мышью… (Esc — отмена)");
       } else {
         setCellTextIfChanged(editingCell, "Нажмите комбинацию… (Esc — отмена)");
       }
     });
 
-    // Клавиатура
-    document.addEventListener("keydown", (e) => {
-      if (!editingCell) return;
-      if (window.hotkeysMode !== "custom") {
-        // режим выключен — отменяем редактирование, возвращаем старое
-        clearEditing(true);
-        return;
-      }
+    // KeyDown: собираем set нажатых клавиш (включая Shift/Alt/Ctrl/Meta как обычные)
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (!editingCell) return;
 
-      const action = editingCell.dataset.action;
-      const isClickAction = CLICK_ACTIONS.has(action);
+        if (window.hotkeysMode !== "custom") {
+          clearEditing(true);
+          return;
+        }
 
-      // Esc — отмена (✅ теперь всегда корректно)
-      if (e.key === "Escape") {
+        const action = editingCell.dataset.action;
+        const isClickAction = CLICK_ACTIONS.has(action);
+
+        // Esc — отмена
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          clearEditing(true);
+          updateConflicts();
+          return;
+        }
+
+        // Tab в режиме редактирования не даём уводить фокус
+        if (e.key === "Tab") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          return;
+        }
+
+        // В режиме click-action игнорируем клавиатуру (чтобы не мешала клику)
+        if (isClickAction) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          return;
+        }
+
+        // блокируем редакторские хоткеи/навигацию страницы
         e.preventDefault();
         e.stopPropagation();
         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-        clearEditing(true);
+
+        // авто-repeat нам не нужен (иначе будет “дребезг”)
+        if (e.repeat) return;
+
+        const token = normalizeKeyTokenFromEvent(e);
+        if (!token) return;
+
+        editingPressed.add(token);
+
+        const combo = buildChordComboFromSet(editingPressed);
+
+        // Всегда сохраняем pending (даже если это одна клавиша, включая Shift/Control/etc)
+        editingCell.dataset.pendingCombo = combo;
+
+        setCellTextIfChanged(editingCell, prettyHotkey(combo || "…"));
+      },
+      true
+    );
+
+    // Mouse for click-actions
+    document.addEventListener(
+      "mousedown",
+      (e) => {
+        if (!editingCell) return;
+
+        if (window.hotkeysMode !== "custom") {
+          clearEditing(true);
+          return;
+        }
+
+        const action = editingCell.dataset.action;
+        if (!CLICK_ACTIONS.has(action)) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+        const combo = comboFromMouseEvent(e);
+
+        hotkeys.set(action, combo);
+        const normalized = hotkeys.get(action) || combo;
+        setCellTextIfChanged(editingCell, prettyHotkey(normalized));
+
+        clearEditing(false);
         updateConflicts();
-        return;
-      }
+      },
+      true
+    );
 
+    // KeyUp: сохраняем, когда отпущены ВСЕ клавиши (set пуст)
+    document.addEventListener(
+      "keyup",
+      (e) => {
+        if (!editingCell) return;
+        if (window.hotkeysMode !== "custom") return;
 
+        const action = editingCell.dataset.action;
+        if (CLICK_ACTIONS.has(action)) return;
 
-      
-      // штука для работы соло шифт, альт и тд. почему-то сомнения есть 
-      if (e.key === "Tab") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-        return;
-      }
+        const token = normalizeKeyTokenFromEvent(e);
+        if (token) editingPressed.delete(token);
 
+        // Пока аккорд еще частично удерживается — ничего не перерисовываем (нет мигания)
+        if (editingPressed.size > 0) return;
 
+        const pending = editingCell.dataset.pendingCombo;
+        if (pending) {
+          hotkeys.set(action, pending);
+          const normalized = hotkeys.get(action) || pending;
+          setCellTextIfChanged(editingCell, prettyHotkey(normalized));
 
+          delete editingCell.dataset.pendingCombo;
+          clearEditing(false);
+          updateConflicts();
+          return;
+        }
 
-      // в режиме назначения клика игнорируем клавиатуру
-      if (isClickAction) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-        return;
-      }
+        // fallback: показать текущее значение
+        const current = window.hotkeys?.get?.(action) || "";
+        setCellTextIfChanged(editingCell, prettyHotkey(current));
+      },
+      true
+    );
 
-      // блокируем редакторские хоткеи
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-      // чистые модификаторы не сохраняем
-      if (isModifierOnlyKey(e.key)) {
-        const mods = [];
-        if (e.ctrlKey || e.metaKey) mods.push("Ctrl/Cmd");
-        if (e.altKey) mods.push("Alt");
-        if (e.shiftKey) mods.push("Shift");
-        setCellTextIfChanged(editingCell, (mods.length ? mods.join("+") + "+" : "") + "…");
-        return;
-      }
-
-      const token = normalizeKeyTokenFromEventKey(e.key);
-if (token) editingPressed.add(token);
-
-const combo = buildChordCombo(e, editingPressed);
-
-// pendingCombo сохраняем только когда есть хотя бы одна немодификаторная клавиша
-if (editingPressed.size > 0) {
-  editingCell.dataset.pendingCombo = combo;
-}
-setCellTextIfChanged(editingCell, prettyHotkey(combo || "…"));
-    }, true);
-
-    // Мышь для click-actions
-    document.addEventListener("mousedown", (e) => {
-      if (!editingCell) return;
-      if (window.hotkeysMode !== "custom") {
-        clearEditing(true);
-        return;
-      }
-
-      const action = editingCell.dataset.action;
-      if (!CLICK_ACTIONS.has(action)) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-      const combo = comboFromMouseEvent(e);
-      hotkeys.set(action, combo);
-      const normalized = hotkeys.get(action) || combo;
-      setCellTextIfChanged(editingCell, prettyHotkey(normalized));
-
-      clearEditing(false);
-      updateConflicts();
-    }, true);
-
-// KeyUp — НЕ рисуем "сужающийся" аккорд, чтобы не было мигания.
-// Обновляем текст только когда отпущены ВСЕ клавиши (set пуст).
-document.addEventListener(
-  "keyup",
-  (e) => {
-    if (!editingCell) return;
-    if (window.hotkeysMode !== "custom") return;
-
-    const action = editingCell.dataset.action;
-    if (CLICK_ACTIONS.has(action)) return;
-
-    const token = normalizeKeyTokenFromEventKey(e.key);
-    if (token) editingPressed.delete(token);
-
-    // Пока аккорд еще частично удерживается — ничего не перерисовываем.
-    if (editingPressed.size > 0) return;
-
-    // Когда отпущено всё — если есть pendingCombo, то сохраняем его.
-    const pending = editingCell.dataset.pendingCombo;
-    if (pending) {
-      hotkeys.set(action, pending);
-
-      const normalized = hotkeys.get(action) || pending;
-      setCellTextIfChanged(editingCell, prettyHotkey(normalized));
-
-      delete editingCell.dataset.pendingCombo;
-
-      clearEditing(false);
-      updateConflicts();
-      return;
+    if (!window.__hkEditorAntiStickyInstalled) {
+      window.__hkEditorAntiStickyInstalled = true;
+    
+      window.addEventListener("blur", () => {
+        if (!editingCell) return;
+        editingPressed.clear();
+      });
+    
+      document.addEventListener("visibilitychange", () => {
+        if (!editingCell) return;
+        if (document.hidden) editingPressed.clear();
+      });
     }
-
-    // Если pending нет — просто вернём текущее значение из конфига (на всякий случай)
-    const current = window.hotkeys?.get?.(action) || "";
-    setCellTextIfChanged(editingCell, prettyHotkey(current));
-  },
-  true
-);
 
     // Reset
     const btn = document.getElementById("hotkeysResetBtn");
@@ -316,12 +342,11 @@ document.addEventListener(
   }
 })();
 
-
 (function () {
   const el = document.getElementById("hkModeToggle");
   if (!el) return;
 
-  el.checked = (window.hotkeysMode === "custom");
+  el.checked = window.hotkeysMode === "custom";
 
   el.addEventListener("change", () => {
     window.hotkeysMode = el.checked ? "custom" : "builtin";
