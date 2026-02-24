@@ -97,16 +97,51 @@
     });
   }
 
-  function prettyHotkey(v) {
-    if (typeof v !== "string") return v;
+  // hotkeys_editor.js
+// Заменить текущую prettyHotkey(v) на эту версию
 
-    return v
-      .replace(/\bPlus\b/g, "+")
-      .replace(/ArrowUp/g, "↑")
-      .replace(/ArrowDown/g, "↓")
-      .replace(/ArrowLeft/g, "←")
-      .replace(/ArrowRight/g, "→");
-  }
+function prettyHotkey(v) {
+  if (typeof v !== "string") return v;
+
+  // 1) Спец-кейс: исторический "+"
+  // (у тебя уже есть логика, где Shift+Plus превращается в "+")
+  // Если сюда пришло просто "+", оставляем как есть.
+  if (v.trim() === "+") return "+";
+
+  // 2) Разбиваем на токены (ожидаем формат "A+B+C")
+  const rawTokens = v.split("+").map(s => s.trim()).filter(Boolean);
+  if (!rawTokens.length) return "";
+
+  // 3) Приоритет для отображения: Ctrl -> Alt -> Shift -> остальное
+  const prio = (t) => {
+    if (t === "Control") return 1;
+    if (t === "Alt") return 2;
+    if (t === "Shift") return 3;
+    return 4;
+  };
+
+  // 4) Внутри "остального" можно оставить стабильную сортировку по алфавиту
+  // (чтобы ArrowUp/Click/Enter и т.п. не прыгали)
+  const tokens = [...rawTokens].sort((a, b) => {
+    const pa = prio(a), pb = prio(b);
+    if (pa !== pb) return pa - pb;
+    return String(a).localeCompare(String(b));
+  });
+
+  // 5) Display-замены (ТОЛЬКО визуально)
+  const mapToken = (t) => {
+    if (t === "Control") return "Ctrl";   // как ты хочешь
+    if (t === "Plus") return "+";         // на всякий случай
+    if (t === "ArrowUp") return "↑";
+    if (t === "ArrowDown") return "↓";
+    if (t === "ArrowLeft") return "←";
+    if (t === "ArrowRight") return "→";
+    // Click оставляем "Click" как ты просил
+    return t;
+  };
+
+  return tokens.map(mapToken).join("+");
+}
 
   function setCellTextIfChanged(cell, text) {
     if (!cell) return;
