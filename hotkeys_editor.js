@@ -97,8 +97,7 @@
     });
   }
 
-  // hotkeys_editor.js
-// Заменить текущую prettyHotkey(v) на эту версию
+
 
 function prettyHotkey(v) {
   if (typeof v !== "string") return v;
@@ -130,7 +129,7 @@ function prettyHotkey(v) {
 
   // 5) Display-замены (ТОЛЬКО визуально)
   const mapToken = (t) => {
-    if (t === "Control") return "Ctrl";   // как ты хочешь
+    if (t === "Control") return "Ctrl/Cmd";   // как ты хочешь
     if (t === "Plus") return "+";         // на всякий случай
     if (t === "ArrowUp") return "↑";
     if (t === "ArrowDown") return "↓";
