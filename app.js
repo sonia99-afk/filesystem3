@@ -74,62 +74,124 @@ function redo() {
 function isMod(e) { return (e.metaKey || e.ctrlKey) && !e.altKey; }
 
 function isUndoHotkey(e) {
-  if (window.hotkeys?.get && isHotkey(e, "undo")) return true;
-  return isMod(e) && !e.shiftKey && 
-         (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
+  if (!window.hotkeys?.get) return false;
+  return isHotkey(e, "undo");
 }
 
 function isRedoHotkey(e) {
-  if (window.hotkeys?.get && isHotkey(e, "redo")) return true;
-  return isMod(e) && e.shiftKey && 
-         (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
+  if (!window.hotkeys?.get) return false;
+  return isHotkey(e, "redo");
 }
 
+/* =========================
+   Multi-key hotkeys (chords)
+   - allows combos like A+S+D
+   - we keep a Set of currently pressed non-modifier keys
+   ========================= */
 
+   const pressedKeys = new Set();
+
+   function isTextEditingElement(el) {
+     if (!el) return false;
+     if (el.isContentEditable) return true;
+     const tag = String(el.tagName || "").toUpperCase();
+     if (tag === "INPUT" || tag === "TEXTAREA") return true;
+     return false;
+   }
+   
+   function normalizeKeyTokenFromEventKey(key) {
+     if (!key) return "";
+   
+     // Space
+     if (key === " ") return "Space";
+     if (key === "Spacebar") return "Space";
+   
+     // Legacy
+     if (key === "Esc") return "Escape";
+   
+     // IMPORTANT: don't use literal "+" inside "A+B" strings
+     if (key === "+") return "Plus";
+   
+     // Letters
+     if (key.length === 1) return key.toUpperCase();
+     return key;
+   }
+   
+   function shouldTrackPressed(e) {
+     const ae = document.activeElement;
+     // В инпутах / textarea / contenteditable не ведём набор аккорда,
+     // чтобы не было "залипаний" и неожиданных срабатываний.
+     if (isTextEditingElement(ae)) return false;
+     // Если есть спец-режимы ввода — они сами ловят клавиатуру.
+     if (ae?.classList?.contains?.("edit")) return false;
+     if (ae?.classList?.contains?.("tg-export")) return false;
+     return true;
+   }
+   
+   window.addEventListener(
+     "keydown",
+     (e) => {
+       if (!shouldTrackPressed(e)) {
+         pressedKeys.clear();
+         return;
+       }
+   
+       // Modifiers are handled via e.ctrlKey/e.metaKey/e.altKey/e.shiftKey
+       if (isModifierKey(e.key)) return;
+       if (e.key === "Tab" || e.key === "Escape") return;
+   
+       const token = normalizeKeyTokenFromEventKey(e.key);
+       if (token) pressedKeys.add(token);
+     },
+     true
+   );
+   
+   window.addEventListener(
+     "keyup",
+     (e) => {
+       const token = normalizeKeyTokenFromEventKey(e.key);
+       if (token) pressedKeys.delete(token);
+     },
+     true
+   );
+   
+   window.addEventListener("blur", () => pressedKeys.clear());
+   document.addEventListener("visibilitychange", () => {
+     if (document.hidden) pressedKeys.clear();
+   });
  
-//функция для добавления соло шифт, альт и тд. не провереная, выше рабочая старая
-function comboFromEvent(e) {
-  // обработка пробела
-if (e.key === " ") {
-  const parts = [];
-  if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-  if (e.altKey) parts.push("Alt");
-  if (e.shiftKey) parts.push("Shift");
-  parts.push("Space");
-  return parts.join("+");
-}
-
-  // обработка "+"
-  if (e.key === "+") {
-      const parts = [];
-      if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-      if (e.altKey) parts.push("Alt");
-      if (e.shiftKey) parts.push("Shift");
-      parts.push("+");
-      return parts.join("+");
+   function comboFromEvent(e) {
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+  
+    // Берём все НЕ-модификаторные клавиши, которые сейчас удерживаются.
+    // (аккорд, например A+S+D)
+    const keys = Array.from(pressedKeys);
+    keys.sort((a, b) => String(a).localeCompare(String(b)));
+  
+    // Historical special-case: Shift + "+" stored as just "+"
+    const onlyShift = e.shiftKey && !(e.ctrlKey || e.metaKey) && !e.altKey;
+    if (onlyShift && keys.length === 1 && keys[0] === "Plus") {
+      return "+";
+    }
+  
+    parts.push(...keys);
+    return parts.join("+");
   }
 
-  const parts = [];
-  if (e.ctrlKey || e.metaKey) parts.push("Ctrl/Cmd");
-  if (e.altKey) parts.push("Alt");
-  if (e.shiftKey) parts.push("Shift");
-
-  let key = e.key === "Esc" ? "Escape" : e.key;
-  // добавляем только если это не клавиша-модификатор
-  if (!isModifierKey(key)) {
-      if (key.length === 1) key = key.toUpperCase();
-      parts.push(key);
+  function isHotkey(e, action) {
+    const want = window.hotkeys?.get?.(action);
+    if (!want) return false;
+  
+    // защита от автоповтора: чтобы A+S+D не стрелял бесконечно при удержании
+    if (e.repeat) return false;
+  
+    const haveRaw = comboFromEvent(e);
+    const have = window.hotkeys?.normalizeCombo ? window.hotkeys.normalizeCombo(haveRaw) : haveRaw;
+    return have === want;
   }
-
-  return parts.join("+");
-}
-
-function isHotkey(e, action) {
-  // hotkeys — это твой конфиг из hotkeys_config.js
-  const want = window.hotkeys?.get?.(action);
-  if (!want) return false;
-  return comboFromEvent(e) === want;
-}
 
 
 /* ========================= */

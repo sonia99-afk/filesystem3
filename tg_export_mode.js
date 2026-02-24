@@ -114,51 +114,77 @@
 
   function treeFromAscii(text) {
     const clean = stripCodeFences(text);
-
+  
     const lines = clean
-      .split('\n')
+      .split("\n")
       .map(l => l.trim())
       .filter(Boolean);
-
+  
     const stack = [];
     let newRoot = null;
-
+  
     for (const line of lines) {
       const m = line.match(/^((?:-\s*)*)\s*(.+)$/);
-if (!m) continue;
-
-// считаем количество '-' в префиксе (пробелы игнорируем)
-const level = (m[1].match(/-/g) || []).length;
-
-const name = m[2].trim();
-if (!name) continue;
-
+      if (!m) continue;
+  
+      // считаем количество '-' в префиксе (пробелы игнорируем)
+      const level = (m[1].match(/-/g) || []).length;
+  
+      const name = (m[2] || "").trim();
+      if (!name) continue;
+  
+      // Приводим уровень к 0..3
+      const desiredLevel = Math.max(0, Math.min(3, level));
+  
       const node = {
         id: Math.random().toString(36).slice(2),
-        level: Math.max(0, Math.min(3, level)),
+        level: desiredLevel,
         name,
         children: []
       };
-
+  
       if (node.level === 0) {
         // ✅ Разрешаем только ОДИН root (первую строку без '-')
-        // Всё остальное без '-' считаем мусором и игнорируем при сохранении.
         if (newRoot) continue;
-      
+  
         newRoot = node;
         stack.length = 0;
         stack.push(node);
         continue;
       }
-
+  
+      // 1) если ушли "вверх" — попаем до нужного уровня родителя
+      // stack.length = depth+1, а node.level = depth
       while (stack.length > node.level) stack.pop();
+  
+      // 2) если пропущены уровни — достраиваем плейсхолдерами
+      // Пример: встретили level=2 (Отдел), а в стеке только root -> добавим Проект
+      while (stack.length < node.level) {
+        const placeholderLevel = stack.length; // 1, 2, ...
+        const placeholder = {
+          id: Math.random().toString(36).slice(2),
+          level: placeholderLevel,
+          name:
+            (typeof DEFAULT_NAME !== "undefined" && DEFAULT_NAME[placeholderLevel])
+              ? DEFAULT_NAME[placeholderLevel]
+              : (placeholderLevel === 1 ? "Проект" : placeholderLevel === 2 ? "Отдел" : "Должность"),
+          children: []
+        };
+  
+        const p = stack[stack.length - 1];
+        if (!p) break;
+        p.children.push(placeholder);
+        stack.push(placeholder);
+      }
+  
+      // 3) теперь родитель гарантированно есть
       const parent = stack[stack.length - 1];
       if (!parent) continue;
-
+  
       parent.children.push(node);
       stack.push(node);
     }
-
+  
     return newRoot;
   }
 
@@ -229,6 +255,8 @@ if (!name) continue;
     alert('Не удалось распознать дерево. Проверь формат.');
     return;
   }
+
+  if (typeof pushHistory === "function") pushHistory();
 
   // мутируем root in-place
   root.id = newTree.id;
