@@ -9,6 +9,45 @@
     return document.getElementById('tgCopy');
   }
 
+    // Всегда копируем АКТУАЛЬНОЕ состояние:
+  // - если мы в tgMode и есть textarea, копируем её (пользователь мог внести правки, но ещё не сохранить)
+  // - иначе пересобираем ASCII из текущего DOM-дерева
+  function getCurrentCopyText() {
+    if (tgMode) {
+      const ta = document.querySelector('textarea.tg-export');
+      if (ta) return ta.value;
+    }
+
+    const tree = buildTreeFromDom();
+    return tree ? asciiFromTree(tree) : '```\n(дерево не найдено)\n```';
+  }
+
+  function installCopyHandler() {
+    const copyBtn = getCopyBtn();
+    if (!copyBtn || copyBtn.__tgCopyInstalled) return;
+    copyBtn.__tgCopyInstalled = true;
+  
+    let revertTimer = null;
+    const baseText = copyBtn.textContent; // запомним один раз
+  
+    copyBtn.onclick = async () => {
+      try {
+        const text = getCurrentCopyText();
+        await navigator.clipboard.writeText(text);
+  
+        copyBtn.textContent = 'Скопировано ✓';
+  
+        if (revertTimer) clearTimeout(revertTimer);
+        revertTimer = setTimeout(() => {
+          copyBtn.textContent = baseText;
+          revertTimer = null;
+        }, 900);
+      } catch (e) {
+        alert('Не получилось скопировать.');
+      }
+    };
+  }
+
   function getNodeLabelFromRow(row) {
     const clone = row.cloneNode(true);
     const act = clone.querySelector('.act');
@@ -129,9 +168,9 @@ if (!name) continue;
     if (!host) return;
 
     const copyBtn = getCopyBtn();
-if (copyBtn) {
-  copyBtn.style.display = 'inline-block';
-}
+      if (copyBtn) {
+        copyBtn.style.display = 'inline-block';
+      }
 
     const tree = buildTreeFromDom();
     lastAscii = tree ? asciiFromTree(tree) : '```\n(дерево не найдено)\n```';
@@ -154,30 +193,17 @@ if (copyBtn) {
     ta.style.width = '35%';
     ta.style.minHeight = '300px';
 
-    if (copyBtn) {
-      copyBtn.onclick = async () => {
-        try {
-          await navigator.clipboard.writeText(ta.value);
-          const originalText = copyBtn.textContent;
-          copyBtn.textContent = 'Скопировано ✓';
-          setTimeout(() => {
-            copyBtn.textContent = originalText;
-          }, 900);
-        } catch (e) {
-          alert('Не получилось скопировать.');
-        }
-      };
-    }
+   
 
-    const SAVE_TEXT = 'Сохранить';
-const SAVED_TEXT = 'Сохранить ✓';
+          const SAVE_TEXT = 'Сохранить';
+      const SAVED_TEXT = 'Сохранить ✓';
 
-let isSaved = false;
+      let isSaved = false;
 
-function setSavedState(saved) {
-  isSaved = saved;
-  backBtn.textContent = saved ? SAVED_TEXT : SAVE_TEXT;
-}
+      function setSavedState(saved) {
+        isSaved = saved;
+        backBtn.textContent = saved ? SAVED_TEXT : SAVE_TEXT;
+      }
 
         // чтобы события из tg-UI не долетали до обработчика #tree.click в app.js
         const stop = (e) => e.stopPropagation();
@@ -285,9 +311,8 @@ host.append(bar);
 
   
   
-
-  installTelegramEventTrap();
+installTelegramEventTrap();
+installCopyHandler();
 patchRender();
-
 
 })();

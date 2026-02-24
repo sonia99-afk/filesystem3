@@ -75,12 +75,14 @@ function isMod(e) { return (e.metaKey || e.ctrlKey) && !e.altKey; }
 
 function isUndoHotkey(e) {
   if (window.hotkeys?.get && isHotkey(e, "undo")) return true;
-  return isMod(e) && !e.shiftKey && (e.code === "KeyX" || String(e.key).toLowerCase() === "x");
+  return isMod(e) && !e.shiftKey && 
+         (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
 }
 
 function isRedoHotkey(e) {
   if (window.hotkeys?.get && isHotkey(e, "redo")) return true;
-  return isMod(e) && !e.shiftKey && (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
+  return isMod(e) && e.shiftKey && 
+         (e.code === "KeyZ" || String(e.key).toLowerCase() === "z");
 }
 
 

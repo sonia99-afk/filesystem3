@@ -36,8 +36,8 @@
     rename: "ё",
     delete: "Backspace",
 
-    undo: "Ctrl/Cmd+X",
-    redo: "Ctrl/Cmd+Shift+X",
+    undo: "Ctrl/Cmd+Z",
+    redo: "Ctrl/Cmd+Shift+Z",
   };
 
   let current = Object.fromEntries(

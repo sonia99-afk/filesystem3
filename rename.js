@@ -46,7 +46,12 @@ function startRename(id) {
 
   input.style.width = Math.max(120, Math.min(520, (cur.length + 4) * 9)) + 'px';
 
+  let done = false;
+
   function commit() {
+    if (done) return;
+    done = true;
+  
     const t = input.value.trim();
     if (t && t !== r.node.name) {
       pushHistory();
@@ -55,50 +60,36 @@ function startRename(id) {
     renamingId = null;
     render();
   }
-
+  
   function cancel() {
+    if (done) return;
+    done = true;
+  
     renamingId = null;
     render();
   }
 
   input.addEventListener('keydown', (e) => {
-    stopBackspaceLeak(e);
-    // undo/redo должны работать даже во время ввода
-    if (isUndoHotkey(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      undo();
-      return;
-    }
-    if (isRedoHotkey(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      redo();
-      return;
-    }
 
+    // 🔒 Главное: не даём событию подняться к .row и app.js
+    stopBackspaceLeak(e);
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  
     if (e.key === 'Enter') {
       e.preventDefault();
-      e.stopPropagation();
       commit();
       return;
     }
-
+  
     if (e.key === 'Escape') {
       e.preventDefault();
-      e.stopPropagation();
       cancel();
       return;
     }
-
-    // стрелки — не даём дереву ловить, но каретку пусть браузер двигает
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      e.stopPropagation();
-      return;
-    }
-
+  
+    // стрелки — пусть работают внутри input
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.stopPropagation();
       if (e.shiftKey) {
         e.preventDefault();
         const len = input.value.length;
@@ -106,7 +97,7 @@ function startRename(id) {
         const b = input.selectionEnd ?? 0;
         const anchor = (input._selAnchor ?? (b > a ? a : a));
         input._selAnchor = anchor;
-
+  
         if (e.key === 'ArrowUp') input.setSelectionRange(0, anchor);
         else input.setSelectionRange(anchor, len);
       } else {
@@ -115,11 +106,7 @@ function startRename(id) {
       return;
     }
 
-    if (e.key === 'Delete') {
-      e.stopPropagation();
-      return;
-    }
-  });
+  }, true);
 
   input.addEventListener('blur', () => { commit(); });
 
@@ -176,9 +163,28 @@ function startRename(id) {
   
     function trap(e) {
       if (!isRenamingActive()) return;
+    
+      const inp = activeEditInput();
+    
+      // ✅ КЛИК ВНЕ input: коммитим через blur
+      const isPointer =
+        e.type === "pointerdown" || e.type === "mousedown" || e.type === "touchstart";
+    
+      if (isPointer && inp && !isAllowedTarget(e)) {
+        // запускаем blur -> commit()
+        inp.blur();
+    
+        // и гасим клик, чтобы он не выбрал строку и не нажал кнопки
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+        return;
+      }
+    
+      // ✅ Внутри input — пропускаем
       if (isAllowedTarget(e)) return;
-  
-      // Жёсткая остановка: не даём событию дойти до app.js/multi_ops/других патчей
+    
+      // 🔒 Всё остальное как было: блокируем
       e.preventDefault();
       e.stopPropagation();
       if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
