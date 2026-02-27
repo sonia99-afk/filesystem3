@@ -28,8 +28,6 @@ function snapshot() {
   });
 }
 
-
-
 function restore(state) {
   const data = JSON.parse(state);
 
@@ -46,7 +44,7 @@ function restore(state) {
   if (!findWithParent(root, selectedId)) selectedId = root.id;
 
   renamingId = null;
-
+  try { resetHotkeyState(); } catch (_) {}
   render();
 }
 
@@ -84,128 +82,291 @@ function isRedoHotkey(e) {
 
 /* =========================
    Multi-key hotkeys (chords)
-   - allows combos like A+S+D and also Shift+1+2 etc.
-   - Shift/Alt/Control/Meta are NORMAL keys (not special modifiers)
-   - layout-independent for letters/digits via e.code
+   - No "sticky" modifiers on macOS (Cmd/Ctrl/Alt/Shift are taken from event flags)
+   - Still allows true multi-key chords like A+S+D (via a non-mod pressed set)
+   - Allows assigning single modifier keys (Shift / Alt / Control(Cmd)) as standalone hotkeys:
+     they fire on keyup if no other key was used while the modifier was held.
+   - Layout-independent for letters/digits via e.code
    ========================= */
 
-   const pressedKeys = new Set();
+const pressedNonMods = new Set();   // letters/digits/arrows/etc (NO modifiers)
+const downMods = new Set();         // {"Shift","Alt","Control"}
+const soloEligibleMods = new Set(); // modifiers pressed without using any non-mod while held
 
-   function isTextEditingElement(el) {
-     if (!el) return false;
-     if (el.isContentEditable) return true;
-     const tag = String(el.tagName || "").toUpperCase();
-     if (tag === "INPUT" || tag === "TEXTAREA") return true;
-     return false;
-   }
-   
-   function normalizeKeyTokenFromEvent(e) {
-     if (!e) return "";
-     const code = String(e.code || "");
-   
-     // Letters (layout-independent): KeyA..KeyZ -> A..Z
-     if (code.startsWith("Key") && code.length === 4) {
-       return code.slice(3).toUpperCase();
-     }
-     // Digits: Digit0..Digit9 -> 0..9
-     if (code.startsWith("Digit") && code.length === 6) {
-       return code.slice(5);
-     }
-     // Numpad digits: Numpad0..Numpad9 -> 0..9
-     if (code.startsWith("Numpad") && code.length === 7 && /[0-9]/.test(code.slice(6))) {
-       return code.slice(6);
-     }
-   
-     // Fallback: special keys (including modifiers as normal keys)
-     const key = e.key;
-     if (!key) return "";
-   
-     if (key === " " || key === "Spacebar") return "Space";
-     if (key === "Esc") return "Escape";
-     if (key === "+") return "Plus";
-   
-     // Mod keys as normal keys
-     if (key === "Shift") return "Shift";
-     if (key === "Alt") return "Alt";
-     if (key === "Control") return "Control";
-     if (key === "Meta" || key === "OS") return "Control";
-   
-     if (key.length === 1) return key.toUpperCase();
-     return key;
-   }
-   
-   function shouldTrackPressed(e) {
-     const ae = document.activeElement;
-   
-     // В текстовых полях не собираем аккорды
-     if (isTextEditingElement(ae)) return false;
-     if (ae?.classList?.contains?.("edit")) return false;
-     if (ae?.classList?.contains?.("tg-export")) return false;
-   
-     return true;
-   }
-   
-   window.addEventListener(
-     "keydown",
-     (e) => {
-       if (!shouldTrackPressed(e)) {
-         pressedKeys.clear();
-         return;
-       }
-   
-       // не мешаем табу/эскейпу жить своей жизнью (а ещё это снижает конфликты с UI)
-       if (e.key === "Tab" || e.key === "Escape") return;
-   
-       const token = normalizeKeyTokenFromEvent(e);
-       if (token) pressedKeys.add(token);
-     },
-     true
-   );
-   
-   window.addEventListener(
-     "keyup",
-     (e) => {
-       const token = normalizeKeyTokenFromEvent(e);
-       if (token) pressedKeys.delete(token);
-     },
-     true
-   );
-   
-   window.addEventListener("blur", () => pressedKeys.clear());
-   window.addEventListener("focus", () => pressedKeys.clear());
-   document.addEventListener("visibilitychange", () => {
-     if (document.hidden) pressedKeys.clear();
-   });
-   
-   function comboFromEvent() {
-     const keys = Array.from(pressedKeys);
-     keys.sort((a, b) => String(a).localeCompare(String(b)));
-   
-     // special-case: Shift + Plus -> "+"
-     if (keys.length === 2 && keys.includes("Shift") && keys.includes("Plus")) return "+";
-   
-     return keys.join("+");
-   } 
+function resetHotkeyState() {
+  pressedNonMods.clear();
+  downMods.clear();
+  soloEligibleMods.clear();
+}
 
-   
-   function isHotkey(e, action) {
-    const wantRaw = window.hotkeys?.get?.(action);
-    if (!wantRaw) return false;
-  
-    if (e.repeat) return false;
+function isTextEditingElement(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = String(el.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA") return true;
+  return false;
+}
 
-    
-  
-    const haveRaw = comboFromEvent(); 
-  
-    const normalize = window.hotkeys?.normalizeCombo;
-    const want = normalize ? normalize(wantRaw) : wantRaw;
-    const have = normalize ? normalize(haveRaw) : haveRaw;
-  
-    return have === want;
+function shouldTrackPressed(e) {
+  const ae = document.activeElement;
+
+  // В текстовых полях не собираем аккорды
+  if (isTextEditingElement(ae)) return false;
+  if (ae?.classList?.contains?.("edit")) return false;
+  if (ae?.classList?.contains?.("tg-export")) return false;
+
+  return true;
+}
+
+// Non-mod token from KeyboardEvent (modifiers return "")
+function normalizeNonModTokenFromEvent(e) {
+  if (!e) return "";
+  const code = String(e.code || "");
+
+  // Letters (layout-independent): KeyA..KeyZ -> A..Z
+  if (code.startsWith("Key") && code.length === 4) return code.slice(3).toUpperCase();
+
+  // Digits: Digit0..Digit9 -> 0..9
+  if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
+
+  // Numpad digits: Numpad0..Numpad9 -> 0..9
+  if (code.startsWith("Numpad") && code.length === 7 && /[0-9]/.test(code.slice(6))) return code.slice(6);
+
+  const key = e.key;
+  if (!key) return "";
+
+  if (key === " " || key === "Spacebar") return "Space";
+  if (key === "Esc") return "Escape";
+  if (key === "+") return "Plus";
+
+  // ❌ modifiers are not tracked as "pressed keys" (avoid sticky on macOS)
+  if (key === "Shift" || key === "Alt" || key === "Control" || key === "Meta" || key === "OS") return "";
+
+  if (key.length === 1) return key.toUpperCase();
+  return key;
+}
+
+// Modifier token (Cmd/Meta normalized to Control)
+function modTokenFromEvent(e) {
+  const key = e?.key;
+  if (key === "Shift") return "Shift";
+  if (key === "Alt") return "Alt";
+  if (key === "Control") return "Control";
+  if (key === "Meta" || key === "OS") return "Control"; // Cmd -> Control
+  return null;
+}
+
+// Build normalized combo from current event flags + pressedNonMods
+function comboFromEvent(e) {
+  const s = new Set(pressedNonMods);
+
+  // modifiers from flags (robust against missed keyup on macOS)
+  if (e?.shiftKey) s.add("Shift");
+  if (e?.altKey) s.add("Alt");
+  if (e?.ctrlKey || e?.metaKey) s.add("Control");
+
+  const keys = Array.from(s);
+  keys.sort((a, b) => String(a).localeCompare(String(b)));
+
+  // special-case: Shift + Plus -> "+"
+  if (keys.length === 2 && keys.includes("Shift") && keys.includes("Plus")) return "+";
+
+  return keys.join("+");
+}
+
+function isHotkey(e, action) {
+  const wantRaw = window.hotkeys?.get?.(action);
+  if (!wantRaw) return false;
+
+  if (e.repeat) return false;
+
+  const haveRaw = comboFromEvent(e);
+
+  const normalize = window.hotkeys?.normalizeCombo;
+  const want = normalize ? normalize(wantRaw) : wantRaw;
+  const have = normalize ? normalize(haveRaw) : haveRaw;
+
+  // Single modifiers (Shift / Alt / Control) are handled on keyup (to not break combos).
+  // So on keydown of a modifier key, do NOT match "Shift"/"Alt"/"Control".
+  const mod = modTokenFromEvent(e);
+  if (e.type === "keydown" && mod && pressedNonMods.size === 0 && have === mod) {
+    return false;
   }
-   
-   /* ========================= */
+
+  return have === want;
+}
+
+// Deterministic order for "combo -> action" resolution (used for single-mod hotkeys)
+const HOTKEY_ACTION_ORDER = [
+  "undo","redo",
+  "indent","outdent",
+  "navLeft","navRight","navUp","navDown",
+  "moveUp","moveDown",
+  "rename","delete",
+  "addChild","addSibling",
+];
+
+// Find first matching action for a given normalized combo string
+function actionByCombo(combo) {
+  if (!combo) return null;
+  const normalize = window.hotkeys?.normalizeCombo;
+  const needle = normalize ? normalize(combo) : combo;
+
+  for (const action of HOTKEY_ACTION_ORDER) {
+    const v = window.hotkeys?.get?.(action);
+    if (!v) continue;
+    const got = normalize ? normalize(v) : v;
+    if (got === needle) return action;
+  }
+  return null;
+}
+
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!shouldTrackPressed(e)) {
+      resetHotkeyState();
+      return;
+    }
+
+    // не мешаем табу/эскейпу жить своей жизнью
+    if (e.key === "Tab" || e.key === "Escape") return;
+
+    if (e.repeat) return;
+
+    const mod = modTokenFromEvent(e);
+    if (mod) {
+      downMods.add(mod);
+      // если это "первый" модификатор без других клавиш — кандидат на solo-hotkey
+      soloEligibleMods.add(mod);
+      return;
+    }
+
+    const token = normalizeNonModTokenFromEvent(e);
+    if (!token) return;
+
+    // если во время удержания модификатора нажали что-то ещё — это уже не "solo"
+    if (downMods.size > 0) soloEligibleMods.clear();
+
+    pressedNonMods.add(token);
+  },
+  true
+);
+
+window.addEventListener(
+  "keyup",
+  (e) => {
+    const mod = modTokenFromEvent(e);
+
+    const token = normalizeNonModTokenFromEvent(e);
+    if (token) pressedNonMods.delete(token);
+
+    if (mod) {
+      // if released alone (no non-mods used while held) -> trigger solo-mod hotkey on keyup
+      const canSolo = soloEligibleMods.has(mod) && pressedNonMods.size === 0;
+
+      // update mod state
+      downMods.delete(mod);
+      soloEligibleMods.delete(mod);
+
+      // Only trigger if it's really alone (no other mods still held) and app can handle now
+      if (canSolo && downMods.size === 0) {
+        if (!isTreeLocked() && treeHasFocus && selectedId && shouldTrackPressed(e)) {
+          const action = actionByCombo(mod);
+          if (action) {
+            // prevent page/system side-effects (e.g., Alt alone on some browsers)
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            // Run the action in the same way as normal hotkeys
+            runHotkeyAction(action, selectedId);
+          }
+        }
+      }
+    }
+  },
+  true
+);
+
+window.addEventListener("blur", resetHotkeyState);
+window.addEventListener("focus", resetHotkeyState);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) resetHotkeyState();
+});
+
+/* ========================= */
+
+// Run an action by name (used by both keydown handlers and single-mod hotkeys)
+function runHotkeyAction(action, contextId) {
+  // contextId: the row id under cursor for row-level handlers; fallback to selectedId
+  const id = contextId || selectedId;
+
+  switch (action) {
+    case "undo":
+      undo();
+      return true;
+    case "redo":
+      redo();
+      return true;
+
+    case "indent":
+      selectedId = id;
+      indentNode(id);
+      return true;
+    case "outdent":
+      selectedId = id;
+      outdentNode(id);
+      return true;
+
+    case "navLeft":
+      goParent(id);
+      return true;
+    case "navRight":
+      goDeeper(id);
+      return true;
+    case "navUp":
+      selectedId = id;
+      moveSelection(-1);
+      return true;
+    case "navDown":
+      selectedId = id;
+      moveSelection(+1);
+      return true;
+
+    case "moveUp":
+      selectedId = id;
+      moveWithinParent(-1);
+      return true;
+    case "moveDown":
+      selectedId = id;
+      moveWithinParent(+1);
+      return true;
+
+    case "rename":
+      selectedId = id;
+      treeHasFocus = true;
+      render();
+      startRename(id);
+      return true;
+
+    case "delete":
+      selectedId = id;
+      removeSelected();
+      return true;
+
+    case "addChild":
+      selectedId = id;
+      addChild(id);
+      return true;
+
+    case "addSibling":
+      selectedId = id;
+      addSibling(id);
+      return true;
+  }
+
+  return false;
+}
 
 function esc(s) {
   return String(s ?? '')
@@ -637,40 +798,13 @@ function renderNode(n) {
       return;
     }
 
-    // undo/redo
-    if (isUndoHotkey(e)) {
-      e.preventDefault();
-      undo();
-      return;
+    for (const action of HOTKEY_ACTION_ORDER) {
+      if (isHotkey(e, action)) {
+        e.preventDefault();
+        runHotkeyAction(action, n.id);
+        return;
+      }
     }
-    if (isRedoHotkey(e)) {
-      e.preventDefault();
-      redo();
-      return;
-    }
-
-    // Shift+Right/Left -> indent/outdent
-    // indent / outdent
-if (isHotkey(e, "indent")) { e.preventDefault(); selectedId=n.id; indentNode(n.id); return; }
-if (isHotkey(e, "outdent")) { e.preventDefault(); selectedId=n.id; outdentNode(n.id); return; }
-
-// навигация
-if (isHotkey(e, "navLeft")) { e.preventDefault(); goParent(n.id); return; }
-if (isHotkey(e, "navRight")) { e.preventDefault(); goDeeper(n.id); return; }
-if (isHotkey(e, "navUp")) { e.preventDefault(); selectedId=n.id; moveSelection(-1); return; }
-if (isHotkey(e, "navDown")) { e.preventDefault(); selectedId=n.id; moveSelection(+1); return; }
-
-// перемещение внутри уровня
-if (isHotkey(e, "moveUp")) { e.preventDefault(); selectedId=n.id; moveWithinParent(-1); return; }
-if (isHotkey(e, "moveDown")) { e.preventDefault(); selectedId=n.id; moveWithinParent(+1); return; }
-
-// rename / delete
-if (isHotkey(e, "rename")) { e.preventDefault(); selectedId=n.id; treeHasFocus=true; render(); startRename(n.id); return; }
-if (isHotkey(e, "delete")) { e.preventDefault(); selectedId=n.id; removeSelected(); return; }
-
-// add
-if (isHotkey(e, "addChild")) { e.preventDefault(); selectedId=n.id; addChild(n.id); return; }
-if (isHotkey(e, "addSibling")) { e.preventDefault(); selectedId=n.id; addSibling(n.id); return; }
   });
 
   li.appendChild(row);
@@ -776,46 +910,19 @@ window.addEventListener('keydown', (e) => {
   const isRow = active && active.classList && active.classList.contains('row');
   const isEditing = active && active.tagName === 'INPUT' && active.classList && active.classList.contains('edit');
 
-  // If focus is on row or input — their handlers handle hotkeys (incl. undo/redo)
+  // If focus is on row or input — their handlers handle hotkeys
   if (isRow || isEditing) return;
 
   if (!treeHasFocus) return;
   if (!selectedId) return;
 
-  // undo/redo
-  if (isUndoHotkey(e)) {
-    e.preventDefault();
-    undo();
-    return;
+  for (const action of HOTKEY_ACTION_ORDER) {
+    if (isHotkey(e, action)) {
+      e.preventDefault();
+      runHotkeyAction(action, selectedId);
+      return;
+    }
   }
-  if (isRedoHotkey(e)) {
-    e.preventDefault();
-    redo();
-    return;
-  }
-
-  // indent/outdent
-  // indent / outdent
-if (isHotkey(e, "indent"))  { e.preventDefault(); indentNode(selectedId); return; }
-if (isHotkey(e, "outdent")) { e.preventDefault(); outdentNode(selectedId); return; }
-
-// навигация
-if (isHotkey(e, "navLeft"))  { e.preventDefault(); goParent(selectedId); return; }
-if (isHotkey(e, "navRight")) { e.preventDefault(); goDeeper(selectedId); return; }
-if (isHotkey(e, "navUp"))    { e.preventDefault(); moveSelection(-1); return; }
-if (isHotkey(e, "navDown"))  { e.preventDefault(); moveSelection(+1); return; }
-
-// перемещение внутри уровня
-if (isHotkey(e, "moveUp"))   { e.preventDefault(); moveWithinParent(-1); return; }
-if (isHotkey(e, "moveDown")) { e.preventDefault(); moveWithinParent(+1); return; }
-
-// rename / delete
-if (isHotkey(e, "rename")) { e.preventDefault(); render(); startRename(selectedId); return; }
-if (isHotkey(e, "delete")) { e.preventDefault(); removeSelected(); return; }
-
-// add
-if (isHotkey(e, "addChild"))   { e.preventDefault(); addChild(selectedId); return; }
-if (isHotkey(e, "addSibling")) { e.preventDefault(); addSibling(selectedId); return; }
 });
 
 /* ======== tests ======== */

@@ -28,8 +28,6 @@ function snapshot() {
   });
 }
 
-
-
 function restore(state) {
   const data = JSON.parse(state);
 
@@ -46,7 +44,6 @@ function restore(state) {
   if (!findWithParent(root, selectedId)) selectedId = root.id;
 
   renamingId = null;
-
   render();
 }
 
@@ -185,18 +182,15 @@ function isRedoHotkey(e) {
      if (keys.length === 2 && keys.includes("Shift") && keys.includes("Plus")) return "+";
    
      return keys.join("+");
-   } 
-
+   }
    
    function isHotkey(e, action) {
     const wantRaw = window.hotkeys?.get?.(action);
     if (!wantRaw) return false;
   
     if (e.repeat) return false;
-
-    
   
-    const haveRaw = comboFromEvent(); 
+    const haveRaw = comboFromEvent();
   
     const normalize = window.hotkeys?.normalizeCombo;
     const want = normalize ? normalize(wantRaw) : wantRaw;
