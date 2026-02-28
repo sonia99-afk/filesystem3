@@ -24,7 +24,10 @@
             <path d="M20 9h-9a7 7 0 1 0 0 14h1"/>
           </svg>
           </button>
-          <button id="tgToggle" onclick="toggleTelegramMode()">Режим Telegram</button>
+          <span class="mode-toggle">
+            <button id="modeStd" onclick="setTelegramMode(false)">Схема</button>
+            <button id="modeText" onclick="setTelegramMode(true)">Текст</button>
+          </span>
           <button id="tgCopy">Копировать</button>
         </div>
   
@@ -186,7 +189,8 @@
   <script src="hotkeys_config.js"></script>
   <script src="hotkeys_editor.js"></script>
   <script src="rename.js"></script>
-  <script src="app(2).js"></script>
+  <script src="app.js"></script>
+  <script src="arrow_hold_nav.js"></script>
   <script src="multi_select_patch.js"></script>
   <script src="multi_select_deep.js"></script>
   <script src="multi_ops.js"></script>

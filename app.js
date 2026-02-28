@@ -128,7 +128,7 @@ function isRedoHotkey(e) {
      if (key === "Shift") return "Shift";
      if (key === "Alt") return "Alt";
      if (key === "Control") return "Control";
-     if (key === "Meta" || key === "OS") return "Control";
+    //  if (key === "Meta" || key === "OS") return "Control";
    
      if (key.length === 1) return key.toUpperCase();
      return key;
@@ -919,6 +919,8 @@ function runTests() {
 
   console.log('All tests passed');
 }
+
+
 
 render();
 

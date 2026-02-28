@@ -266,3 +266,63 @@ td.conflict{
 #tgCopy {
   display:inline-block;
 }
+/* контейнер тумблера */
+.mode-toggle{
+  display: inline-flex;
+  gap: 0;              /* без отступа */
+  margin-left: 21px;
+  margin-right: 21px; 
+}
+
+/* обе кнопки — как #tgToggle (как "Копировать") */
+.mode-toggle button{
+  height: 21px;
+  background: #f0f0f0;
+  cursor: pointer;
+  border: 1px solid grey;      
+  margin: 0;  /* на всякий */
+}
+
+/* чтобы не было "двойной" границы посередине */
+.mode-toggle button + button{
+  border-left: 0;
+}
+
+/* скругления: у левой убираем справа, у правой убираем слева */
+#modeStd{
+  border-radius: 2px 0 0 2px;
+}
+#modeText{
+  border-radius: 0 2px 2px 0;
+}
+
+/* hover/active — такие же */
+.mode-toggle button:hover { background: #e6e6e6; }
+.mode-toggle button:active { background: gray; }
+
+.mode-toggle button.active{
+  background: #dcdcdc;   /* чуть темнее */
+}
+
+
+/* универсальное неактивное состояние */
+.is-inactive{
+  background: #e0e0e0;
+  color: #777;
+  height: 21px;
+  border: 1px solid grey;
+  border-radius: 2px;
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.8;
+}
+
+/* чтобы hover не перебивал серость */
+.is-inactive:hover{
+  background: #e0e0e0;
+}
+
+/* если кнопка реально отключена */
+.is-inactive:active{
+  background: #e0e0e0;
+}

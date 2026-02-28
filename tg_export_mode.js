@@ -301,6 +301,21 @@ host.append(bar);
   }
 
   function updateToggleBtn() {
+    // ✅ Новый тумблер из двух кнопок
+    const std = document.getElementById('modeStd');
+    const txt = document.getElementById('modeText');
+  
+    if (std && txt) {
+      std.classList.toggle('active', !tgMode);
+      txt.classList.toggle('active', tgMode);
+  
+      std.disabled = !tgMode ? true : false; // можно оставить, а можно убрать
+      txt.disabled = tgMode ? true : false;
+  
+      return;
+    }
+  
+    // ✅ Фолбэк: старая одиночная кнопка (если вдруг осталась)
     const b = document.getElementById('tgToggle');
     if (!b) return;
     b.textContent = tgMode ? 'Стандартный режим' : 'Текстовый режим';
@@ -310,6 +325,17 @@ host.append(bar);
     tgMode = !tgMode;
     updateToggleBtn();
     window.render();
+  };
+
+  window.setTelegramMode = function (on) {
+    tgMode = !!on;
+    updateToggleBtn();
+    window.render();
+  };
+  
+  // backward-compatible: если где-то ещё дергается toggleTelegramMode()
+  window.toggleTelegramMode = function () {
+    window.setTelegramMode(!tgMode);
   };
 
 

@@ -55,7 +55,7 @@
     if (key === "Shift") return "Shift";
     if (key === "Alt") return "Alt";
     if (key === "Control") return "Control";
-    if (key === "Meta" || key === "OS") return "Control";
+    // if (key === "Meta" || key === "OS") return "Control";
    
 
     if (key.length === 1) return key.toUpperCase();
@@ -130,7 +130,7 @@ function prettyHotkey(v) {
 
   // 5) Display-замены (ТОЛЬКО визуально)
   const mapToken = (t) => {
-    if (t === "Control") return "Ctrl/Cmd";   // как ты хочешь
+    if (t === "Control") return "Ctrl";   // как ты хочешь
     if (t === "Plus") return "+";         // на всякий случай
     if (t === "ArrowUp") return "↑";
     if (t === "ArrowDown") return "↓";
