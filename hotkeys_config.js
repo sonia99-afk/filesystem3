@@ -60,7 +60,17 @@
 
     // ✅ Cmd/Meta/OS приравниваем к Control
     const up = String(k).toUpperCase();
-    if (up === "CMD" || up === "META" || up === "OS" || up === "COMMAND" || up === "CONTROL") return "Control";
+    // if (up === "CMD" || up === "META" || up === "OS" || up === "COMMAND" || up === "CONTROL") return "Control";
+
+    if ("CMD".localeCompare(up) === 0
+    || "OS".localeCompare(up) === 0
+    || "META".localeCompare(up) === 0
+    || "COMMAND".localeCompare(up) === 0
+    || "WIN".localeCompare(up) === 0
+      || up === "⌘") {
+        return "Meta";
+    }
+
     if (up === "CTRL") return "Control";
     if (up === "OPTION") return "OPTION";
 

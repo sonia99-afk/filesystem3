@@ -55,8 +55,9 @@
     if (key === "Shift") return "Shift";
     if (key === "Alt") return "Alt";
     if (key === "Control") return "Control";
-    if (key === "Meta" || key === "OS") return "Control";
+    // if (key === "Meta" || key === "OS") return "Control";
    
+    if (e.metaKey) return "Meta"; 
 
     if (key.length === 1) return key.toUpperCase();
     return key;
