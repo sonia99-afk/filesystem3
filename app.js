@@ -127,8 +127,8 @@ function isRedoHotkey(e) {
      // Mod keys as normal keys
      if (key === "Shift") return "Shift";
      if (key === "Alt") return "Alt";
-    //  if (key === "Control") return "Control";
-    //  if (key === "Meta" || key === "OS") return "Control";
+     if (key === "Control") return "Control";
+     if (key === "Meta" || key === "OS") return "Control";
    
      if (key.length === 1) return key.toUpperCase();
      return key;

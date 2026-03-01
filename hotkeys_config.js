@@ -60,9 +60,9 @@
 
     // ✅ Cmd/Meta/OS приравниваем к Control
     const up = String(k).toUpperCase();
-    // if (up === "CMD" || up === "META" || up === "OS" || up === "COMMAND" || up === "CONTROL") return "Control";
+    if (up === "CMD" || up === "META" || up === "OS" || up === "COMMAND" || up === "CONTROL") return "Control";
     if (up === "CTRL") return "Control";
-    if (up === "OPTION") return "Alt";
+    if (up === "OPTION") return "OPTION";
 
     return k.length === 1 ? k.toUpperCase() : k;
   }

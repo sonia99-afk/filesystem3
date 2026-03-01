@@ -1,20 +1,18 @@
 (function () {
   if (typeof window === "undefined") return;
 
-  // Public mode flag used by app/editor to lock interactions
+  // Mode: "builtin" (use DEFAULTS) or "custom" (table edits call set())
   window.hotkeysMode = window.hotkeysMode || "builtin";
 
-  // Detect Apple platforms (macOS / iOS / iPadOS). Used only for UI-pretty printing.
+  // macOS uses Meta (⌘) as the primary modifier; Windows/Linux uses Ctrl.
   const IS_APPLE = (() => {
-    try {
-      const p = String(navigator.platform || "");
-      const ua = String(navigator.userAgent || "");
-      return /Mac|iPhone|iPad|iPod/.test(p) || /Mac OS X|iPhone|iPad|iPod/.test(ua);
-    } catch (_) {
-      return false;
-    }
+    const p = String(navigator.platform || "");
+    const ua = String(navigator.userAgent || "");
+    return /Mac|iPhone|iPad|iPod/i.test(p) || /Mac OS X|iPhone|iPad|iPod/i.test(ua);
   })();
 
+  // Canonical modifier name used *inside config strings*.
+  // "Mod" means Ctrl on Windows/Linux and Command on macOS.
   const DEFAULTS = {
     // Добавления
     addSibling: "Enter",
@@ -35,131 +33,204 @@
     outdent: "Shift+ArrowLeft",
 
     // Диапазон (один уровень)
-    rangeUp: "Shift+Alt+Control+ArrowUp",
-    rangeDown: "Shift+Alt+Control+ArrowDown",
-    rangeClick: "Control+Alt+Shift+Click",
+    rangeUp: "Shift+Alt+Mod+ArrowUp",
+    rangeDown: "Shift+Alt+Mod+ArrowDown",
+    rangeClick: "Mod+Alt+Shift+Click",
 
     // Глубокое выделение (ветка)
-    deepUp: "Shift+Control+ArrowUp",
-    deepDown: "Shift+Control+ArrowDown",
-    deepClick: "Control+Shift+Click",
+    deepUp: "Shift+Mod+ArrowUp",
+    deepDown: "Shift+Mod+ArrowDown",
+    deepClick: "Mod+Shift+Click",
 
     // Прочее
-    rename: "ё",
+    rename: "Yo", // RU layout safe alias for the ё key (Backquote)
     delete: "Backspace",
 
     // Undo/Redo
-    undo: "Control+Z",
-    redo: "Control+Shift+Z",
+    undo: "Mod+Z",
+    redo: "Mod+Shift+Z",
   };
 
-  // Internal canonical mapping.
-  // IMPORTANT:
-  //  - We keep the internal canonical modifier name as "Control".
-  //  - On macOS, the app/editor remaps ⌘ (Meta) -> "Control" at event-level.
-  //  - Here, we normalize any textual aliases (Cmd/Meta/Command/OS/Ctrl) -> "Control".
+  // -------- Key token normalization --------
 
-  function normalizeKeyName(k) {
+  function normalizeKeyTokenFromString(raw) {
+    const k = String(raw || "").trim();
     if (!k) return "";
 
-    // Some sources may pass non-string tokens
-    const raw = String(k).trim();
-    if (!raw) return "";
-
-    // Drop garbage tokens that can appear on macOS (e.g. on CapsLock keyup)
-    // If such token is kept, it can create non-releasable combos and break editing.
-    if (raw === "Unidentified") return "";
-
     // Common aliases
-    if (raw === "Esc") return "Escape";
-    if (raw === "Del") return "Delete";
-    if (raw === " " || raw === "Spacebar") return "Space";
-    if (raw === "Space") return "Space";
-    if (raw === "+") return "Plus";
+    const up = k.toUpperCase();
 
-    // Russian UI sometimes gives this
-    if (raw === "Клик" || raw === "клик") return "Click";
+    // Mod aliases
+    if (["MOD", "CMD", "COMMAND", "META", "OS", "WIN", "WINDOWS", "CONTROL", "CTRL"].includes(up)) return "Mod";
 
-    const up = raw.toUpperCase();
+    // Modifier aliases
+    if (up === "SHIFT") return "Shift";
+    if (up === "ALT" || up === "OPTION" || up === "OPT") return "Alt";
 
-    // Canonicalize modifiers / platform keys
-    // - "Control" is the canonical internal token.
-    // - Cmd/Meta/OS/Win/Command are treated as the same modifier.
-    if (
-      up === "CTRL" ||
-      up === "CONTROL" ||
-      up === "CMD" ||
-      up === "COMMAND" ||
-      up === "META" ||
-      up === "OS" ||
-      up === "WIN" ||
-      up === "WINDOWS"
-    ) {
-      return "Control";
-    }
+    // Click alias
+    if (up === "CLICK" || up === "КЛИК") return "Click";
 
-    // Option key on mac is Alt in KeyboardEvent (key="Alt").
-    // If user types "Option", normalize to Alt.
-    if (up === "OPTION") return "Alt";
+    // Special keys
+    if (up === "ESC" || up === "ESCAPE") return "Escape";
+    if (up === "DEL" || up === "DELETE") return "Delete";
+    if (up === "SPACE" || up === "SPACEBAR" || k === " ") return "Space";
+    if (k === "+" || up === "PLUS") return "Plus";
 
-    // Keep standard modifier names
-    if (raw === "Shift") return "Shift";
-    if (raw === "Alt") return "Alt";
+    // RU ё key (safe): accept "ё", "Ё", "YO", "BACKQUOTE", "`"
+    if (k === "ё" || k === "Ё" || up === "YO" || up === "BACKQUOTE" || k === "`") return "Backquote";
 
-    // Keep CapsLock stable as a named key
-    if (up === "CAPSLOCK") return "CapsLock";
+    // Arrows
+    if (up === "ARROWUP") return "ArrowUp";
+    if (up === "ARROWDOWN") return "ArrowDown";
+    if (up === "ARROWLEFT") return "ArrowLeft";
+    if (up === "ARROWRIGHT") return "ArrowRight";
 
-    // Single character keys: normalize to uppercase
-    if (raw.length === 1) return raw.toUpperCase();
+    // Enter / Backspace etc
+    if (up === "ENTER") return "Enter";
+    if (up === "TAB") return "Tab";
+    if (up === "BACKSPACE") return "Backspace";
 
-    return raw;
+    // Function keys pass through
+    if (/^F\d{1,2}$/.test(up)) return up;
+
+    // Single character -> uppercase
+    if (k.length === 1) return k.toUpperCase();
+
+    // Otherwise keep as-is (e.g. Home, End, PageUp)
+    return k;
   }
 
   function normalizeCombo(comboRaw) {
     const raw = String(comboRaw || "").trim();
     if (!raw) return "";
-
-    // Special-case: Shift + Plus -> "+"
     if (raw === "+") return "+";
 
-    const parts = raw
-      .split("+")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const normalized = [];
+    const parts = raw.split("+").map(s => s.trim()).filter(Boolean);
+    const tokens = [];
     for (const p of parts) {
-      const nk = normalizeKeyName(p);
-      if (nk) normalized.push(nk);
+      const t = normalizeKeyTokenFromString(p);
+      if (!t) continue;
+      tokens.push(t);
     }
 
-    // If everything got normalized away (e.g. only Unidentified)
-    if (!normalized.length) return "";
+    // Special-case legacy Shift+Plus -> "+"
+    if (tokens.length === 2 && tokens.includes("Shift") && tokens.includes("Plus")) return "+";
 
-    normalized.sort((a, b) => String(a).localeCompare(String(b)));
+    // Deduplicate
+    const uniq = Array.from(new Set(tokens));
 
-    if (normalized.length === 2 && normalized.includes("Shift") && normalized.includes("Plus")) {
-      return "+";
-    }
+    // Stable ordering for storage: Mod, Ctrl-like, Alt, Shift, then others alpha
+    const prio = (t) => {
+      if (t === "Mod") return 1;
+      if (t === "Alt") return 2;
+      if (t === "Shift") return 3;
+      return 4;
+    };
 
-    return normalized.join("+");
+    uniq.sort((a, b) => {
+      const pa = prio(a), pb = prio(b);
+      if (pa !== pb) return pa - pb;
+      return String(a).localeCompare(String(b));
+    });
+
+    return uniq.join("+");
   }
 
-  function prettyKey(token) {
-    // Purely for UI: does NOT affect matching.
-    if (!token) return "";
-    if (token === "Control") return IS_APPLE ? "Command" : "Ctrl";
-    if (token === "Alt") return IS_APPLE ? "Option" : "Alt";
-    return token;
+  // -------- Pretty printing (UI only) --------
+
+  function prettyKey(t) {
+    if (t === "Mod") return IS_APPLE ? "Command" : "Ctrl";
+    if (t === "Alt") return IS_APPLE ? "Option" : "Alt";
+    if (t === "Backquote") return "ё";
+    if (t === "Plus") return "+";
+    if (t === "ArrowUp") return "↑";
+    if (t === "ArrowDown") return "↓";
+    if (t === "ArrowLeft") return "←";
+    if (t === "ArrowRight") return "→";
+    return t;
   }
 
   function prettyCombo(comboRaw) {
     const c = normalizeCombo(comboRaw);
     if (!c) return "";
     if (c === "+") return "+";
-    const parts = c.split("+").filter(Boolean);
-    return parts.map(prettyKey).join("+");
+    return c.split("+").map(prettyKey).join("+");
   }
+
+  // -------- Matching against a KeyboardEvent --------
+
+  function tokenFromKeyboardEvent(e) {
+    if (!e) return "";
+
+    // Prefer code for layout-independent letters/digits
+    const code = String(e.code || "");
+
+    // Letters
+    if (code.startsWith("Key") && code.length === 4) return code.slice(3).toUpperCase();
+
+    // Digits
+    if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
+
+    // Numpad digits
+    if (code.startsWith("Numpad") && code.length === 7 && /[0-9]/.test(code.slice(6))) return code.slice(6);
+
+    // RU ё key: Backquote
+    if (code === "Backquote") return "Backquote";
+
+    // Stable by code
+    if (code.startsWith("Arrow")) return code;
+    if (code === "Enter") return "Enter";
+    if (code === "Backspace") return "Backspace";
+    if (code === "Delete") return "Delete";
+    if (code === "Escape") return "Escape";
+    if (code === "Space") return "Space";
+    if (code === "Tab") return "Tab";
+
+    // Fallback by key
+    const key = String(e.key || "");
+    if (!key || key === "Unidentified") return "";
+
+    if (key === " " || key === "Spacebar") return "Space";
+    if (key === "Esc") return "Escape";
+    if (key === "+") return "Plus";
+
+    if (key.length === 1) return key.toUpperCase();
+    return key;
+  }
+
+  function comboFromKeyboardEvent(e) {
+    // Ignore pure modifier presses — we want a meaningful chord.
+    const keyToken = tokenFromKeyboardEvent(e);
+    if (!keyToken) return "";
+
+    // If the key itself is a modifier, do not create combos like "Mod" alone.
+    if (keyToken === "Shift" || keyToken === "Alt" || keyToken === "Control" || keyToken === "Meta") return "";
+
+    const tokens = [];
+
+    const modDown = IS_APPLE ? !!e.metaKey : !!e.ctrlKey;
+    if (modDown) tokens.push("Mod");
+    if (e.altKey) tokens.push("Alt");
+    if (e.shiftKey) tokens.push("Shift");
+
+    tokens.push(keyToken);
+
+    return normalizeCombo(tokens.join("+"));
+  }
+
+  function matchEvent(action, e) {
+    const want = current[action];
+    if (!want) return false;
+
+    // Allow actions bound to single keys (e.g. ArrowUp)
+    // We still treat Mod/Shift/Alt as modifiers, not chord members.
+    const have = comboFromKeyboardEvent(e);
+    if (!have) return false;
+
+    return have === want;
+  }
+
+  // -------- Storage --------
 
   let current = Object.fromEntries(
     Object.entries(DEFAULTS).map(([action, combo]) => [action, normalizeCombo(combo)])
@@ -184,7 +255,7 @@
   }
 
   function findConflicts() {
-    const map = new Map(); // combo -> actions[]
+    const map = new Map();
     const conflicts = new Set();
 
     for (const [action, comboRaw] of Object.entries(current)) {
@@ -196,21 +267,24 @@
     }
 
     for (const actions of map.values()) {
-      if (actions.length > 1) actions.forEach((a) => conflicts.add(a));
+      if (actions.length > 1) actions.forEach(a => conflicts.add(a));
     }
+
     return conflicts;
   }
 
   window.hotkeys = {
     DEFAULTS,
-    normalizeKeyName,
     normalizeCombo,
-    prettyKey,
     prettyCombo,
+    prettyKey,
     set,
     get,
     getAll,
     reset,
     findConflicts,
+    matchEvent,
+    // exposed for debugging
+    _IS_APPLE: IS_APPLE,
   };
 })();
