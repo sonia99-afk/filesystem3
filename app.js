@@ -520,7 +520,7 @@ function render() {
 
   if (treeHasFocus) focusSelectedRow();
 
-  const rid = consumeRenameRequest?.();
+  const rid = consumeRenameRequest();
 if (rid) startRename(rid);
 }
 
