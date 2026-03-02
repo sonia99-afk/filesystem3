@@ -253,11 +253,11 @@ function isRedoHotkey(e) {
     const want = normalize ? normalize(wantRaw) : wantRaw;
     const have = normalize ? normalize(haveRaw) : haveRaw;
   
-    return have === want;
+    // return have === want;
 
-//     const ok = have === want;
-// if (ok) pressedKeys.clear();
-// return ok;
+    const ok = have === want;
+if (ok) pressedKeys.clear();
+return ok;
   }
    
    /* ========================= */
