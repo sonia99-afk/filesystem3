@@ -57,7 +57,6 @@
     if (k === "Backspace") return "Backspace";
     if (k === " " || k === "Spacebar") return "Space";
 if (k === "Space") return "Space";
-if (k === "+") return "Plus";
     return k.length === 1 ? k.toUpperCase() : k;
   }
 
@@ -90,8 +89,6 @@ if (k === "+") return "Plus";
       if (x === "Клик") return "Click";
       return normalizeKeyName(x);
     });
-
-    normalizedOther.sort((a, b) => String(a).localeCompare(String(b)));
 
     const out = [];
     // Важно: Ctrl/Cmd как "общий" токен
