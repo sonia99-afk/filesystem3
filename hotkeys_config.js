@@ -1,3 +1,4 @@
+// hotkeys_config.js
 (function () {
   if (typeof window === "undefined") return;
   window.hotkeysMode = window.hotkeysMode || "builtin";
@@ -22,28 +23,27 @@
     outdent: "Shift+ArrowLeft",
 
     // Диапазон (один уровень)
-    rangeUp: "Shift+Alt+Command+ArrowUp",
-    rangeDown: "Shift+Alt+Command+ArrowDown",
-    rangeClick: "Command+Alt+Shift+Click",
+    rangeUp: "Shift+Alt+Ctrl/Cmd+ArrowUp",
+    rangeDown: "Shift+Alt+Ctrl/Cmd+ArrowDown",
+    rangeClick: "Ctrl/Cmd+Alt+Shift+Click",
 
     // Глубокое выделение (ветка)
-    deepUp: "Shift+Command+ArrowUp",
-    deepDown: "Shift+Command+ArrowDown",
-    deepClick: "Command+Shift+Click",
+    deepUp: "Shift+Ctrl/Cmd+ArrowUp",
+    deepDown: "Shift+Ctrl/Cmd+ArrowDown",
+    deepClick: "Ctrl/Cmd+Shift+Click",
 
     // Прочее
     rename: "ё",
     delete: "Backspace",
 
-    // Undo/Redo
-    undo: "Command+Z",
-    redo: "Command+Shift+Z",
+    undo: "Ctrl/Cmd+Z",
+    redo: "Ctrl/Cmd+Shift+Z",
   };
 
   let current = Object.fromEntries(
     Object.entries(DEFAULTS).map(([action, combo]) => [action, normalizeCombo(combo)])
   );
-
+  
   function reset() {
     current = Object.fromEntries(
       Object.entries(DEFAULTS).map(([action, combo]) => [action, normalizeCombo(combo)])
@@ -54,26 +54,9 @@
     if (!k) return "";
     if (k === "Esc") return "Escape";
     if (k === "Del") return "Delete";
+    if (k === "Backspace") return "Backspace";
     if (k === " " || k === "Spacebar") return "Space";
-    if (k === "Space") return "Space";
-    if (k === "+") return "Plus";
-
-    // ✅ Cmd/Meta/OS приравниваем к Control
-    const up = String(k).toUpperCase();
-    // if (up === "CMD" || up === "META" || up === "OS" || up === "COMMAND" || up === "CONTROL") return "Control";
-
-    if ("CMD".localeCompare(up) === 0
-    || "OS".localeCompare(up) === 0
-    || "META".localeCompare(up) === 0
-    || "COMMAND".localeCompare(up) === 0
-    || "WIN".localeCompare(up) === 0
-      || up === "⌘") {
-        return "Command";
-    }
-
-    if (up === "CTRL") return "Control";
-    if (up === "OPTION") return "Alt";
-
+if (k === "Space") return "Space";
     return k.length === 1 ? k.toUpperCase() : k;
   }
 
@@ -84,19 +67,41 @@
 
     const parts = raw.split("+").map(s => s.trim()).filter(Boolean);
 
-    const normalized = parts.map((p) => {
-      if (p === "Клик") return "Click";
-      return normalizeKeyName(p);
-    });
+    const mods = { Ctrl: false, Cmd: false, Alt: false, Shift: false, CtrlCmd: false };
+    const other = [];
 
-    normalized.sort((a, b) => String(a).localeCompare(String(b)));
+    for (const p of parts) {
+      const up = p.toUpperCase();
+      if (up === "CTRL") mods.Ctrl = true;
+      else if (up === "CMD" || up === "META") mods.Cmd = true;
+      else if (up === "ALT") mods.Alt = true;
+      else if (up === "SHIFT") mods.Shift = true;
+      else if (up === "CTRL/CMD") mods.CtrlCmd = true;
+      else other.push(p);
+    }
 
-    // Shift + Plus -> "+"
-    if (normalized.length === 2 && normalized.includes("Shift") && normalized.includes("Plus")) {
+    // Shift++ -> "+"
+    if (other.length === 1 && other[0] === "+" && mods.Shift && !mods.Ctrl && !mods.Cmd && !mods.Alt && !mods.CtrlCmd) {
       return "+";
     }
 
-    return normalized.join("+");
+    const normalizedOther = other.map((x) => {
+      if (x === "Клик") return "Click";
+      return normalizeKeyName(x);
+    });
+
+    const out = [];
+    // Важно: Ctrl/Cmd как "общий" токен
+    if (mods.CtrlCmd) out.push("Ctrl/Cmd");
+    else {
+      if (mods.Ctrl) out.push("Ctrl");
+      if (mods.Cmd) out.push("Cmd");
+    }
+    if (mods.Alt) out.push("Alt");
+    if (mods.Shift) out.push("Shift");
+    out.push(...normalizedOther);
+
+    return out.join("+");
   }
 
   function set(action, combo) {
